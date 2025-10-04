@@ -14,6 +14,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         sidepanel: resolve(__dirname, 'sidepanel.html'),
+        offscreen: resolve(__dirname, 'src/offscreen.ts'),
       },
       output: {
         entryFileNames: '[name].js',

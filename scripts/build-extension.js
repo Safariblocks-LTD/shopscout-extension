@@ -39,20 +39,25 @@ filesToCopy.forEach(file => {
   }
 });
 
-// Copy offscreen document files from public/
-const offscreenFiles = ['offscreen.html', 'offscreen.js'];
-console.log('\n📄 Copying offscreen document files...');
-offscreenFiles.forEach(file => {
-  const src = join(rootDir, 'public', file);
-  const dest = join(distDir, file);
-  
-  if (existsSync(src)) {
-    copyFileSync(src, dest);
-    console.log(`  ✓ ${file}`);
-  } else {
-    console.log(`  ⚠ ${file} not found in public/`);
-  }
-});
+// Copy offscreen.html from public/ (offscreen.js is built by Vite)
+console.log('\n📄 Copying offscreen.html...');
+const offscreenHtml = join(rootDir, 'public', 'offscreen.html');
+const offscreenHtmlDest = join(distDir, 'offscreen.html');
+
+if (existsSync(offscreenHtml)) {
+  copyFileSync(offscreenHtml, offscreenHtmlDest);
+  console.log(`  ✓ offscreen.html`);
+} else {
+  console.log(`  ⚠ offscreen.html not found in public/`);
+}
+
+// Verify offscreen.js was built by Vite
+const offscreenJs = join(distDir, 'offscreen.js');
+if (existsSync(offscreenJs)) {
+  console.log(`  ✓ offscreen.js (built by Vite)`);
+} else {
+  console.log(`  ⚠ offscreen.js not found - Vite build may have failed`);
+}
 
 // Copy assets directory if it exists
 const assetsDir = join(rootDir, 'assets');
