@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-neutral-200;
+  }
+  
+  body {
+    @apply bg-neutral-50 text-neutral-900 font-sans antialiased;
+    margin: 0;
+    padding: 0;
+    min-width: 400px;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-neutral-200 p-4;
+  }
+
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-md hover:border-neutral-300;
+  }
+
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-dark focus:ring-primary;
+  }
+
+  .btn-secondary {
+    @apply bg-neutral-100 text-neutral-700 hover:bg-neutral-200 focus:ring-neutral-500;
+  }
+
+  .btn-success {
+    @apply bg-success text-white hover:bg-success-dark focus:ring-success;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply bg-success/10 text-success-dark;
+  }
+
+  .badge-warning {
+    @apply bg-warning/10 text-warning-dark;
+  }
+
+  .badge-danger {
+    @apply bg-danger/10 text-danger-dark;
+  }
+
+  .badge-primary {
+    @apply bg-primary/10 text-primary-dark;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-neutral-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-neutral-400 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-neutral-500;
+}
+
+/* Animations */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(
+    90deg,
+    #F9FAFB 0%,
+    #E9ECEF 20%,
+    #F9FAFB 40%,
+    #F9FAFB 100%
+  );
+  background-size: 1000px 100%;
+  border-radius: 0.5rem;
+}
+
+/* Smooth transitions for all interactive elements */
+button, a, input, select, textarea {
+  @apply transition-all duration-200 ease-in-out;
+}
+
+/* Custom focus styles */
+input:focus, textarea:focus, select:focus {
+  @apply outline-none ring-4 ring-primary/10 border-primary;
+}
+
+/* Hover lift effect for cards */
+.card-lift {
+  @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover;
+}

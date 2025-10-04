@@ -1,0 +1,273 @@
+import { useState, useEffect } from 'react';
+import { Bird, Sparkles, LogOut, User as UserIcon } from 'lucide-react';
+import ProductSnapshot from './components/ProductSnapshot';
+import PriceComparison from './components/PriceComparison';
+import PriceHistory from './components/PriceHistory';
+import ReviewSummary from './components/ReviewSummary';
+import TrustBadge from './components/TrustBadge';
+import ActionBar from './components/ActionBar';
+import EmptyState from './components/EmptyState';
+import LoadingState from './components/LoadingState';
+import AuthScreen from './components/AuthScreen';
+import { useAuth } from './contexts/AuthContext';
+import { ProductData, AnalysisData } from './types';
+
+function App() {
+  const { user, loading: authLoading, signOut } = useAuth();
+  const [product, setProduct] = useState<ProductData | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  useEffect(() => {
+    // Request current product data
+    chrome.runtime.sendMessage(
+      { type: 'SIDEPANEL_REQUEST', action: 'GET_CURRENT_PRODUCT' },
+      (response) => {
+        if (response?.product) {
+          setProduct(response.product);
+          loadAnalysis();
+        } else {
+          setLoading(false);
+        }
+      }
+    );
+
+    // Listen for product updates
+    const messageListener = (message: any) => {
+      if (message.type === 'PRODUCT_UPDATED') {
+        setProduct(message.data);
+        setAnalyzing(true);
+      } else if (message.type === 'ANALYSIS_COMPLETE') {
+        setAnalysis(message.data);
+        setAnalyzing(false);
+        setLoading(false);
+      } else if (message.type === 'ANALYSIS_ERROR') {
+        setAnalyzing(false);
+        setLoading(false);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(messageListener);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(messageListener);
+    };
+  }, []);
+
+  const loadAnalysis = () => {
+    setAnalyzing(true);
+    chrome.runtime.sendMessage(
+      { type: 'SIDEPANEL_REQUEST', action: 'GET_ANALYSIS' },
+      (response) => {
+        if (response?.analysis) {
+          setAnalysis(response.analysis);
+          setAnalyzing(false);
+        }
+        setLoading(false);
+      }
+    );
+  };
+
+  const handleRefresh = () => {
+    setAnalyzing(true);
+    chrome.runtime.sendMessage(
+      { type: 'SIDEPANEL_REQUEST', action: 'REFRESH_ANALYSIS' },
+      (response) => {
+        if (!response?.success) {
+          setAnalyzing(false);
+        }
+      }
+    );
+  };
+
+  const handleSaveToWishlist = () => {
+    if (!product) return;
+
+    chrome.runtime.sendMessage(
+      {
+        type: 'SIDEPANEL_REQUEST',
+        action: 'SAVE_TO_WISHLIST',
+        data: product,
+      },
+      (response) => {
+        if (response?.success) {
+          // Show success notification
+          console.log('Saved to wishlist');
+        }
+      }
+    );
+  };
+
+  const handleTrackPrice = (targetPrice: number) => {
+    if (!product?.productId) return;
+
+    chrome.runtime.sendMessage(
+      {
+        type: 'SIDEPANEL_REQUEST',
+        action: 'TRACK_PRICE',
+        productId: product.productId,
+        targetPrice,
+      },
+      (response) => {
+        if (response?.success) {
+          console.log('Price tracking enabled');
+        }
+      }
+    );
+  };
+
+  // Show auth screen if user is not authenticated
+  if (authLoading) {
+    return <LoadingState />;
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (!product) {
+    return <EmptyState />;
+  }
+
+  const bestDeal = analysis?.deals?.results?.[0];
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-neutral-50">
+      {/* Header with User Profile */}
+      <header className="sticky top-0 z-10 bg-white border-b border-neutral-100 shadow-sm">
+        <div className="px-4 py-3">
+          {/* Top Row: Logo and User Profile */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-dark rounded-2xl flex items-center justify-center shadow-sm">
+                <Bird className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg font-heading font-bold text-neutral-900">ShopScout</h1>
+                <p className="text-xs text-neutral-500 font-body">AI Shopping Assistant</p>
+              </div>
+            </div>
+
+            {/* User Profile */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-2 bg-neutral-50 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
+                {user.photoURL ? (
+                  <img 
+                    src={user.photoURL} 
+                    alt={user.displayName || 'User'} 
+                    className="w-7 h-7 rounded-full border-2 border-primary/20"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
+                    <UserIcon className="w-4 h-4 text-white" />
+                  </div>
+                )}
+                <div className="text-left">
+                  <p className="text-xs font-semibold text-neutral-900 font-heading">
+                    {user.displayName || user.email?.split('@')[0] || 'User'}
+                  </p>
+                  <p className="text-xs text-neutral-500 font-body truncate max-w-[120px]">
+                    {user.email}
+                  </p>
+                </div>
+              </div>
+              
+              <button
+                onClick={handleSignOut}
+                className="p-2.5 hover:bg-danger/10 rounded-xl transition-all duration-200 hover:scale-110 active:scale-95 group"
+                title="Sign out"
+              >
+                <LogOut className="w-4 h-4 text-neutral-600 group-hover:text-danger" />
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom Row: Analyzing Status */}
+          {analyzing && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/10 rounded-xl animate-pulse-glow">
+              <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+              <span className="text-xs font-semibold text-primary font-heading">Analyzing product...</span>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="pb-20">
+        <div className="p-4 space-y-4">
+          {/* Product Snapshot */}
+          <ProductSnapshot
+            product={product}
+            trustScore={analysis?.trustScore}
+            onRefresh={handleRefresh}
+          />
+
+          {/* Trust Badge */}
+          {analysis?.trustScore !== undefined && (
+            <TrustBadge
+              score={analysis.trustScore}
+              product={product}
+              aiAnalysis={analysis.aiAnalysis}
+            />
+          )}
+
+          {/* Price Comparison */}
+          {analysis?.deals?.results && (
+            <PriceComparison
+              currentPrice={product.price}
+              deals={analysis.deals.results}
+              currentSite={product.site}
+            />
+          )}
+
+          {/* Price History */}
+          {analysis?.priceHistory && (
+            <PriceHistory
+              data={analysis.priceHistory}
+              currentPrice={product.price}
+              onTrackPrice={handleTrackPrice}
+            />
+          )}
+
+          {/* Review Summary */}
+          {product.reviews && (
+            <ReviewSummary
+              reviews={product.reviews}
+              rating={product.rating}
+            />
+          )}
+        </div>
+      </main>
+
+      {/* Action Bar */}
+      <ActionBar
+        bestDeal={bestDeal}
+        onSave={handleSaveToWishlist}
+        onShare={() => {
+          if (navigator.share) {
+            navigator.share({
+              title: product.title,
+              text: `Check out this deal: ${product.title}`,
+              url: product.url,
+            });
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+export default App;

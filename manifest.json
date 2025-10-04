@@ -1,0 +1,74 @@
+{
+  "manifest_version": 3,
+  "name": "ShopScout - AI Shopping Agent",
+  "version": "1.0.0",
+  "description": "Your AI-powered shopping assistant that finds better deals, summarizes reviews, and vets sellers - all while you shop.",
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "32": "assets/icons/icon32.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "notifications",
+    "alarms",
+    "sidePanel",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://*.amazon.com/*",
+    "https://*.amazon.co.uk/*",
+    "https://*.ebay.com/*",
+    "https://*.walmart.com/*",
+    "https://*.temu.com/*",
+    "https://*.shopify.com/*",
+    "https://*.aliexpress.com/*",
+    "https://*.target.com/*",
+    "https://*.bestbuy.com/*",
+    "https://*.googleapis.com/*",
+    "https://*.firebaseapp.com/*",
+    "https://*.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.amazon.com/*",
+        "https://*.amazon.co.uk/*",
+        "https://*.ebay.com/*",
+        "https://*.walmart.com/*",
+        "https://*.temu.com/*",
+        "https://*.shopify.com/*",
+        "https://*.aliexpress.com/*",
+        "https://*.target.com/*",
+        "https://*.bestbuy.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "32": "assets/icons/icon32.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    },
+    "default_title": "Open ShopScout"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
