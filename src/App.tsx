@@ -6,7 +6,7 @@ import ReviewSummary from './components/ReviewSummary';
 import TrustBadge from './components/TrustBadge';
 import ActionBar from './components/ActionBar';
 import EmptyState from './components/EmptyState';
-import WelcomeScreen from './components/WelcomeScreen';
+import AuthPrompt from './components/AuthPrompt';
 import PriceComparison from './components/PriceComparison';
 import { ProductData, AnalysisData } from './types';
 
@@ -28,17 +28,36 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
 
-  // Check if user is onboarded
+  // Check if user is authenticated - poll every 2 seconds
   useEffect(() => {
-    chrome.storage.local.get(['onboarded', 'nickname', 'email'], (result) => {
-      if (result.onboarded) {
-        setOnboarded(true);
-        setNickname(result.nickname || '');
-        setUserEmail(result.email || '');
-      } else {
-        setLoading(false);
-      }
-    });
+    const checkAuth = () => {
+      chrome.storage.local.get(['authenticated', 'displayName', 'userEmail', 'userId'], (result) => {
+        if (result.authenticated && result.userId) {
+          setOnboarded(true);
+          setNickname(result.displayName || '');
+          setUserEmail(result.userEmail || '');
+          setLoading(false);
+        } else {
+          // Check legacy onboarding
+          chrome.storage.local.get(['onboarded', 'nickname', 'email'], (legacyResult) => {
+            if (legacyResult.onboarded) {
+              setOnboarded(true);
+              setNickname(legacyResult.nickname || '');
+              setUserEmail(legacyResult.email || '');
+            }
+            setLoading(false);
+          });
+        }
+      });
+    };
+
+    // Check immediately
+    checkAuth();
+
+    // Then check every 2 seconds to detect authentication
+    const interval = setInterval(checkAuth, 2000);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -139,13 +158,6 @@ function App() {
     );
   };
 
-  // Handle onboarding completion
-  const handleOnboardingComplete = (nick: string, email: string) => {
-    setNickname(nick);
-    setUserEmail(email);
-    setOnboarded(true);
-  };
-
   // Handle sign out
   const handleSignOut = async () => {
     await chrome.storage.local.clear();
@@ -154,13 +166,13 @@ function App() {
     setUserEmail('');
   };
 
-  // Show welcome screen if not onboarded
-  if (!onboarded) {
-    return <WelcomeScreen onComplete={handleOnboardingComplete} />;
-  }
-
   if (loading) {
     return <LoadingState />;
+  }
+
+  // Show auth prompt if not authenticated
+  if (!onboarded) {
+    return <AuthPrompt />;
   }
 
   if (!product) {

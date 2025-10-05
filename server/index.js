@@ -7,6 +7,7 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import { Op } from 'sequelize';
 import {
   initializeDatabase,
   User,
@@ -59,13 +60,49 @@ function requireAuth(req, res, next) {
 }
 
 /**
- * Health check endpoint
+ * Homepage
  */
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>ShopScout Backend Server</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        h1 { color: #6366F1; }
+        .endpoint { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .method { color: #10B981; font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <h1>🛍️ ShopScout Backend Server</h1>
+      <p><strong>Status:</strong> Running ✅</p>
+      <p><strong>Port:</strong> ${PORT}</p>
+      <p><strong>Version:</strong> 2.0</p>
+      
+      <h2>Available Endpoints:</h2>
+      <div class="endpoint"><span class="method">GET</span> /health - Health check</div>
+      <div class="endpoint"><span class="method">POST</span> /api/user/sync - Sync user from Firebase</div>
+      <div class="endpoint"><span class="method">GET</span> /api/search?query=... - Search products</div>
+      <div class="endpoint"><span class="method">GET</span> /api/price-history/:productId - Get price history</div>
+      <div class="endpoint"><span class="method">POST</span> /api/wishlist - Add to wishlist</div>
+      <div class="endpoint"><span class="method">GET</span> /api/wishlist - Get wishlist</div>
+      <div class="endpoint"><span class="method">DELETE</span> /api/wishlist/:id - Remove from wishlist</div>
+      <div class="endpoint"><span class="method">POST</span> /api/track - Track price</div>
+      <div class="endpoint"><span class="method">GET</span> /api/track - Get tracked items</div>
+      <div class="endpoint"><span class="method">DELETE</span> /api/track/:id - Stop tracking</div>
+    </body>
+    </html>
+  `);
+});
+
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '1.0.0',
-    timestamp: new Date().toISOString(),
+    version: '2.0.0',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -145,7 +182,92 @@ app.get('/api/price-history/:productId', (req, res) => {
 });
 
 /**
- * Create simple user (nickname + email only)
+ * Sync user from Firebase authentication
+ */
+app.post('/api/user/sync', async (req, res) => {
+  try {
+    const { uid, email, displayName, photoURL, emailVerified } = req.body;
+    
+    if (!uid || !email) {
+      return res.status(400).json({ error: 'uid and email are required' });
+    }
+
+    // Try to find user by ID or email
+    let user = await User.findOne({ 
+      where: { 
+        [Op.or]: [
+          { id: uid },
+          { email: email }
+        ]
+      } 
+    });
+    
+    if (user) {
+      // Update existing user
+      await user.update({
+        id: uid, // Update ID in case found by email
+        email,
+        displayName: displayName || email.split('@')[0],
+        photoURL: photoURL || null,
+        emailVerified: emailVerified || false,
+        lastLoginAt: new Date(),
+        authMethod: 'google'
+      });
+      console.log(`[User] ✅ Updated existing user: ${email}`);
+    } else {
+      // Create new user
+      user = await User.create({
+        id: uid,
+        email,
+        displayName: displayName || email.split('@')[0],
+        photoURL: photoURL || null,
+        emailVerified: emailVerified || false,
+        authMethod: 'google',
+        lastLoginAt: new Date()
+      });
+      console.log(`[User] ✅ Created new user: ${email}`);
+    }
+    
+    res.json({
+      success: true,
+      userId: user.id,
+      displayName: user.displayName,
+      email: user.email
+    });
+  } catch (error) {
+    console.error('[User] ❌ Sync error:', error.message);
+    
+    // Handle duplicate key error gracefully
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      console.log('[User] User already exists, attempting to update...');
+      try {
+        const user = await User.findOne({ where: { email } });
+        if (user) {
+          await user.update({
+            id: uid,
+            displayName: displayName || email.split('@')[0],
+            photoURL: photoURL || null,
+            emailVerified: emailVerified || false,
+            lastLoginAt: new Date()
+          });
+          return res.json({
+            success: true,
+            userId: user.id,
+            displayName: user.displayName,
+            email: user.email
+          });
+        }
+      } catch (updateError) {
+        console.error('[User] Update failed:', updateError.message);
+      }
+    }
+    
+    res.status(500).json({ error: 'Failed to sync user', details: error.message });
+  }
+});
+
+/**
+ * Create simple user (nickname + email only) - Legacy endpoint
  */
 app.post('/api/user/create', async (req, res) => {
   try {

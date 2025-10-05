@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShopScout - Sign In</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              DEFAULT: '#6366F1',
+              50: '#F5F7FF',
+              100: '#EBF0FF',
+              200: '#D6DFFF',
+              300: '#A5B4FC',
+              400: '#818CF8',
+              500: '#6366F1',
+              600: '#4F46E5',
+              700: '#4338CA',
+              800: '#3730A3',
+              900: '#312E81',
+            },
+            accent: {
+              DEFAULT: '#F59E0B',
+              50: '#FFFBEB',
+              100: '#FEF3C7',
+              200: '#FDE68A',
+              300: '#FCD34D',
+              400: '#FBBF24',
+              500: '#F59E0B',
+              600: '#D97706',
+              700: '#B45309',
+              800: '#92400E',
+              900: '#78350F',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.6s ease-out',
+            'slide-up': 'slideUp 0.5s ease-out',
+            'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' }
+            },
+            slideUp: {
+              '0%': { opacity: '0', transform: 'translateY(20px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' }
+            },
+            pulseGlow: {
+              '0%, 100%': { boxShadow: '0 0 20px rgba(99, 102, 241, 0.4)' },
+              '50%': { boxShadow: '0 0 30px rgba(99, 102, 241, 0.6)' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50">
+  
+  <!-- Main Container -->
+  <div class="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8">
+    <div class="w-full max-w-md">
+      
+      <!-- Logo & Branding -->
+      <div class="text-center mb-8 animate-fade-in">
+        <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-700 rounded-3xl mb-6 shadow-2xl animate-pulse-glow">
+          <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+          </svg>
+        </div>
+        <h1 class="text-4xl font-black bg-gradient-to-r from-primary-600 via-primary-500 to-accent-500 bg-clip-text text-transparent mb-3">
+          Welcome to ShopScout
+        </h1>
+        <p class="text-lg text-gray-600 font-medium">
+          Your AI-powered shopping companion
+        </p>
+      </div>
+
+      <!-- Auth Card -->
+      <div class="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-gray-100 overflow-hidden animate-slide-up">
+        
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-gray-100 bg-gray-50/50">
+          <button id="signInTab" 
+            class="flex-1 py-4 px-6 text-sm font-bold transition-all duration-300 border-b-2 border-primary-500 text-primary-600 bg-white">
+            Sign In
+          </button>
+          <button id="signUpTab" 
+            class="flex-1 py-4 px-6 text-sm font-bold transition-all duration-300 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50">
+            Sign Up
+          </button>
+        </div>
+
+        <!-- Content Area -->
+        <div class="p-8">
+          
+          <!-- Sign In Form -->
+          <div id="signInForm">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Welcome back!</h2>
+            
+            <!-- Google Sign In -->
+            <button id="googleSignInBtn" 
+              class="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] mb-4">
+              <svg class="w-6 h-6" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              <span class="text-base">Continue with Google</span>
+            </button>
+
+            <div class="relative my-6">
+              <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-gray-200"></div>
+              </div>
+              <div class="relative flex justify-center text-sm">
+                <span class="px-4 bg-white text-gray-500 font-medium">Or sign in with email</span>
+              </div>
+            </div>
+
+            <!-- Email Sign In Form -->
+            <form id="emailSignInForm" class="space-y-4">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
+                <input type="email" id="signInEmail" required
+                  class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none transition-all text-gray-900 placeholder-gray-400"
+                  placeholder="you@example.com">
+              </div>
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+                <input type="password" id="signInPassword" required
+                  class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none transition-all text-gray-900 placeholder-gray-400"
+                  placeholder="••••••••">
+              </div>
+              <button type="submit" id="emailSignInBtn"
+                class="w-full bg-gradient-to-r from-primary-600 to-primary-700 text-white py-4 rounded-xl font-bold text-base hover:from-primary-700 hover:to-primary-800 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]">
+                Sign In
+              </button>
+            </form>
+
+            <div class="text-center mt-6">
+              <button id="magicLinkSignInBtn" class="text-sm text-primary-600 hover:text-primary-700 font-semibold hover:underline">
+                Send me a magic link instead →
+              </button>
+            </div>
+          </div>
+
+          <!-- Sign Up Form -->
+          <div id="signUpForm" class="hidden">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Create your account</h2>
+            
+            <!-- Google Sign Up -->
+            <button id="googleSignUpBtn" 
+              class="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white border-2 border-gray-200 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] mb-4">
+              <svg class="w-6 h-6" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              <span class="text-base">Sign up with Google</span>
+            </button>
+
+            <div class="relative my-6">
+              <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-gray-200"></div>
+              </div>
+              <div class="relative flex justify-center text-sm">
+                <span class="px-4 bg-white text-gray-500 font-medium">Or sign up with Magic Link</span>
+              </div>
+            </div>
+
+            <!-- Magic Link Sign Up Form -->
+            <form id="magicLinkSignUpForm" class="space-y-4">
+              <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
+                <input type="email" id="signUpEmail" required
+                  class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-100 focus:border-primary-500 outline-none transition-all text-gray-900 placeholder-gray-400"
+                  placeholder="you@example.com">
+              </div>
+              <button type="submit" id="magicLinkSignUpBtn"
+                class="w-full bg-gradient-to-r from-primary-600 to-primary-700 text-white py-4 rounded-xl font-bold text-base hover:from-primary-700 hover:to-primary-800 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]">
+                Send Magic Link
+              </button>
+            </form>
+
+            <div class="mt-6 p-4 bg-primary-50 border border-primary-100 rounded-xl">
+              <p class="text-sm text-primary-900 text-center">
+                <span class="font-semibold">✨ Passwordless & Secure</span><br>
+                We'll send you a link to sign up instantly
+              </p>
+            </div>
+          </div>
+
+          <!-- Status Messages -->
+          <div id="statusMessage" class="hidden mt-6"></div>
+
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="text-center mt-8 animate-fade-in">
+        <p class="text-sm text-gray-500 mb-2">
+          🔒 Secure authentication powered by Firebase
+        </p>
+        <p class="text-xs text-gray-400">
+          By continuing, you agree to our Terms of Service
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-white rounded-3xl p-10 text-center shadow-2xl max-w-sm mx-4 animate-slide-up">
+      <div class="w-20 h-20 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mx-auto mb-6"></div>
+      <p class="text-xl font-bold text-gray-900 mb-2">Authenticating...</p>
+      <p class="text-sm text-gray-500">Please wait a moment</p>
+    </div>
+  </div>
+
+  <script type="module" src="auth.js"></script>
+</body>
+</html>

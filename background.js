@@ -563,16 +563,18 @@ const handlers = {
  * Event Listeners
  */
 
-// Listen for messages from content script and side panel
+// Listen for messages from content script, side panel, and auth page
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[ShopScout] Message received:', message.type);
 
   if (message.type === 'PRODUCT_DETECTED') {
     handlers.handleProductDetected(message.data, sender);
     sendResponse({ received: true });
+    
   } else if (message.type === 'SIDEPANEL_REQUEST') {
     handlers.handleSidePanelRequest(message, sender, sendResponse);
     return true; // Keep channel open for async response
+    
   } else if (message.type === 'FIREBASE_AUTH') {
     // Handle Firebase authentication through offscreen document
     (async () => {
@@ -604,25 +606,200 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     })();
     return true;
+    
+  } else if (message.type === 'AUTH_SUCCESS') {
+    // Handle authentication success from auth page
+    console.log('[ShopScout] Authentication successful:', message.user);
+    
+    // Store user data
+    chrome.storage.local.set({
+      authenticated: true,
+      userId: message.user.uid,
+      userEmail: message.user.email,
+      displayName: message.user.displayName,
+      photoURL: message.user.photoURL,
+      emailVerified: message.user.emailVerified,
+      authMethod: message.user.authMethod,
+      authTimestamp: Date.now()
+    }).then(() => {
+      console.log('[ShopScout] User data stored');
+      sendResponse({ success: true });
+      
+      // Close auth tab if it exists
+      if (sender.tab) {
+        chrome.tabs.remove(sender.tab.id).catch(() => {});
+      }
+      
+      // Open side panel on current active tab
+      chrome.tabs.query({ active: true, currentWindow: true }).then(tabs => {
+        if (tabs[0]) {
+          chrome.sidePanel.open({ tabId: tabs[0].id }).catch(err => {
+            console.log('[ShopScout] Could not open side panel:', err);
+          });
+        }
+      });
+    });
+    
+    return true; // Keep channel open for async response
   }
 
   return false;
 });
 
-// Handle extension icon click
-chrome.action.onClicked.addListener(async (tab) => {
+// Poll for authentication success from web page
+async function checkAuthFromWebPage() {
   try {
-    await chrome.sidePanel.open({ tabId: tab.id });
-    state.sidePanelOpen = true;
-    state.activeTabId = tab.id;
-
-    // Request product scrape from content script
-    chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PRODUCT' }).catch(err => {
-      console.log('[ShopScout] No content script on this page');
+    const response = await fetch('http://localhost:8000/check-auth', {
+      method: 'GET',
+      credentials: 'include'
     });
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      if (data.authenticated && data.user) {
+        console.log('[ShopScout] 🎉 Authentication detected from web page!');
+        console.log('[ShopScout] User:', data.user.email);
+        
+        // Store user data
+        await chrome.storage.local.set({
+          authenticated: true,
+          userId: data.user.uid,
+          userEmail: data.user.email,
+          displayName: data.user.displayName,
+          photoURL: data.user.photoURL,
+          emailVerified: data.user.emailVerified,
+          authMethod: data.user.authMethod,
+          authTimestamp: Date.now()
+        });
+        
+        console.log('[ShopScout] ✅ User data stored successfully');
+        
+        // Close auth tabs
+        console.log('[ShopScout] Closing auth tabs...');
+        const tabs = await chrome.tabs.query({});
+        const authTabs = tabs.filter(t => t.url && (t.url.includes('localhost:8000') || t.url.includes('localhost:8001')));
+        
+        if (authTabs.length > 0) {
+          console.log(`[ShopScout] Found ${authTabs.length} auth tab(s) to close`);
+          for (const authTab of authTabs) {
+            console.log(`[ShopScout] Closing tab: ${authTab.url}`);
+            await chrome.tabs.remove(authTab.id).catch(err => {
+              console.error('[ShopScout] Error closing tab:', err);
+            });
+          }
+        }
+        
+        // Open sidebar - try multiple approaches
+        console.log('[ShopScout] Opening sidebar...');
+        
+        // Approach 1: Try current active tab
+        const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        
+        if (activeTabs[0]) {
+          console.log('[ShopScout] Active tab found:', activeTabs[0].id);
+          try {
+            await chrome.sidePanel.open({ tabId: activeTabs[0].id });
+            console.log('[ShopScout] ✅ Sidebar opened on active tab!');
+            return true;
+          } catch (err) {
+            console.error('[ShopScout] Failed to open on active tab:', err.message);
+          }
+        }
+        
+        // Approach 2: Try to open on window
+        try {
+          const windows = await chrome.windows.getAll({ populate: true });
+          if (windows[0] && windows[0].tabs && windows[0].tabs[0]) {
+            const firstTab = windows[0].tabs[0];
+            console.log('[ShopScout] Trying first tab:', firstTab.id);
+            await chrome.sidePanel.open({ tabId: firstTab.id });
+            console.log('[ShopScout] ✅ Sidebar opened on first tab!');
+            return true;
+          }
+        } catch (err) {
+          console.error('[ShopScout] Failed to open on first tab:', err.message);
+        }
+        
+        // Approach 3: Try global open (Chrome 116+)
+        try {
+          await chrome.sidePanel.open({});
+          console.log('[ShopScout] ✅ Sidebar opened globally!');
+          return true;
+        } catch (err) {
+          console.error('[ShopScout] Failed to open globally:', err.message);
+        }
+        
+        console.warn('[ShopScout] ⚠️ Could not open sidebar with any method');
+        return true;
+      }
+    }
   } catch (error) {
-    console.error('[ShopScout] Error opening side panel:', error);
+    // Silently fail - auth server might not be running yet
   }
+  return false;
+}
+
+// Check for web authentication periodically
+setInterval(checkAuthFromWebPage, 2000);
+
+// Handle extension icon click
+chrome.action.onClicked.addListener((tab) => {
+  // Use callback to maintain user gesture context
+  chrome.storage.local.get(['authenticated', 'userId'], (result) => {
+    const { authenticated, userId } = result;
+    
+    console.log('[ShopScout] Icon clicked. Auth status:', { authenticated, userId });
+    
+    if (!authenticated || !userId) {
+      // User not authenticated - open BOTH auth page AND sidebar
+      console.log('[ShopScout] User not authenticated, opening auth page and sidebar');
+      
+      // Use localhost auth server
+      const authUrl = 'http://localhost:8000';
+      
+      // First, open the sidebar (with AuthPrompt)
+      chrome.sidePanel.open({ tabId: tab.id }).then(() => {
+        console.log('[ShopScout] ✅ Sidebar opened with AuthPrompt');
+      }).catch(error => {
+        console.error('[ShopScout] Error opening sidebar:', error);
+      });
+      
+      // Then, check if auth tab already exists
+      chrome.tabs.query({}, (tabs) => {
+        const existingAuthTab = tabs.find(t => t.url && (t.url.includes('localhost:8000') || t.url.includes('localhost:8001')));
+        
+        if (existingAuthTab) {
+          // Focus existing auth tab
+          console.log('[ShopScout] Auth tab already exists, focusing it');
+          chrome.tabs.update(existingAuthTab.id, { active: true });
+          chrome.windows.update(existingAuthTab.windowId, { focused: true });
+        } else {
+          // Create new auth tab
+          console.log('[ShopScout] Creating new auth tab at:', authUrl);
+          chrome.tabs.create({ url: authUrl }, (newTab) => {
+            console.log('[ShopScout] Auth tab created:', newTab.id);
+          });
+        }
+      });
+      return;
+    }
+    
+    // User is authenticated - open side panel immediately (maintains user gesture)
+    console.log('[ShopScout] User is authenticated, opening sidebar');
+    chrome.sidePanel.open({ tabId: tab.id }).then(() => {
+      console.log('[ShopScout] ✅ Sidebar opened successfully');
+      state.sidePanelOpen = true;
+      state.activeTabId = tab.id;
+
+      // Request product scrape from content script
+      chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PRODUCT' }).catch(err => {
+        console.log('[ShopScout] No content script on this page');
+      });
+    }).catch(error => {
+      console.error('[ShopScout] Error opening sidebar:', error);
+    });
+  });
 });
 
 // Handle tab updates
@@ -655,10 +832,11 @@ chrome.runtime.onInstalled.addListener((details) => {
         autoOpen: true,
         notifications: true,
       },
+      authenticated: false
     });
 
-    // Welcome page disabled - extension is ready to use
     console.log('[ShopScout] Extension installed successfully!');
+    console.log('[ShopScout] Click the extension icon to sign in');
   }
 });
 
