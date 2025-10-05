@@ -571,6 +571,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handlers.handleProductDetected(message.data, sender);
     sendResponse({ received: true });
     
+  } else if (message.type === 'MANUAL_SCAN') {
+    // Handle manual scan request from sidebar
+    console.log('[ShopScout] Manual scan requested');
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        console.log('[ShopScout] Sending SCRAPE_PRODUCT to tab:', tabs[0].id);
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'SCRAPE_PRODUCT' }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('[ShopScout] Error sending scrape message:', chrome.runtime.lastError.message);
+            sendResponse({ success: false, error: 'Not on a supported product page' });
+          } else {
+            console.log('[ShopScout] Scrape message sent successfully');
+            sendResponse({ success: true });
+          }
+        });
+      } else {
+        sendResponse({ success: false, error: 'No active tab found' });
+      }
+    });
+    return true; // Keep channel open for async response
+    
   } else if (message.type === 'SIDEPANEL_REQUEST') {
     handlers.handleSidePanelRequest(message, sender, sendResponse);
     return true; // Keep channel open for async response

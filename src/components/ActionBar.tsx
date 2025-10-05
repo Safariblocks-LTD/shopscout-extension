@@ -18,14 +18,14 @@ export default function ActionBar({ bestDeal, onSave, onShare }: ActionBarProps)
             href={bestDeal.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block w-full mb-3 px-4 py-3 bg-gradient-to-r from-success to-success-dark text-white rounded-lg font-semibold text-center shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+            className="block w-full mb-3 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold text-center shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
           >
-            <div className="flex items-center justify-center gap-2">
-              <span>Get Best Deal - {formatPrice(bestDeal.price)}</span>
-              <ExternalLink className="w-4 h-4" />
+            <div className="flex items-center justify-center gap-2 text-white">
+              <ExternalLink className="w-5 h-5 text-white" />
+              <span className="text-white font-bold">View Best Deal - {formatPrice(bestDeal.price)}</span>
             </div>
-            <div className="text-xs opacity-90 mt-0.5">
-              at {bestDeal.source}
+            <div className="text-xs text-white opacity-90 mt-1 font-medium">
+              🏪 {bestDeal.source} • Click to open in new tab
             </div>
           </a>
         )}

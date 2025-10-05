@@ -490,13 +490,45 @@ async function initialize() {
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[ShopScout Content] Message received:', message.type);
+  
   if (message.type === 'SCRAPE_PRODUCT') {
-    scraper = new ProductScraper();
+    console.log('[ShopScout Content] Starting manual scrape...');
+    
+    if (!scraper) {
+      scraper = new ProductScraper();
+    }
+    
+    // Check if on product page
+    if (!scraper.isProductPage()) {
+      console.log('[ShopScout Content] Not on a product page');
+      sendResponse({ success: false, error: 'Not on a product page' });
+      return true;
+    }
+    
+    // Scrape product data
     scraper.scrape().then(data => {
-      sendResponse({ success: true, data });
+      if (data) {
+        console.log('[ShopScout Content] Product scraped:', data.title);
+        
+        // Send product data to background script
+        chrome.runtime.sendMessage({
+          type: 'PRODUCT_DETECTED',
+          data: data
+        }).catch(err => {
+          console.error('[ShopScout Content] Error sending product data:', err);
+        });
+        
+        sendResponse({ success: true, data });
+      } else {
+        console.log('[ShopScout Content] Failed to scrape product data');
+        sendResponse({ success: false, error: 'Failed to scrape product data' });
+      }
     }).catch(error => {
+      console.error('[ShopScout Content] Scrape error:', error);
       sendResponse({ success: false, error: error.message });
     });
+    
     return true; // Keep channel open for async response
   }
 });
