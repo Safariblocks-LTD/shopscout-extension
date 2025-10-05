@@ -1,12 +1,23 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User } from 'firebase/auth';
+
+interface FirebaseUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  emailVerified: boolean;
+}
 
 interface AuthContextType {
-  user: User | null;
+  user: FirebaseUser | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  checkUserExists: (email: string) => Promise<boolean>;
+  signUpWithEmail: (email: string, password: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
   sendMagicLink: (email: string) => Promise<void>;
   completeMagicLinkSignIn: (email: string) => Promise<void>;
+  sendVerificationEmail: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -25,8 +36,37 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Sync user to MySQL backend
+  const syncUserToBackend = async (userData: FirebaseUser, authMethod: string) => {
+    try {
+      const response = await fetch('http://localhost:3001/api/user/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          uid: userData.uid,
+          email: userData.email,
+          displayName: userData.displayName,
+          photoURL: userData.photoURL,
+          emailVerified: userData.emailVerified,
+          authMethod
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to sync user to backend');
+      } else {
+        console.log('[Auth] User synced to MySQL database');
+      }
+    } catch (error) {
+      console.error('[Auth] Error syncing user to backend:', error);
+      // Don't throw - user is still authenticated in Firebase
+    }
+  };
 
   useEffect(() => {
     // Check for stored user session
@@ -46,11 +86,32 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     checkStoredSession();
   }, []);
 
-  const signInWithGoogle = async () => {
+  const checkUserExists = async (email: string): Promise<boolean> => {
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'FIREBASE_AUTH',
-        action: 'GOOGLE_SIGN_IN'
+        action: 'CHECK_USER_EXISTS',
+        email
+      });
+
+      if (!response) {
+        throw new Error('No response from background script.');
+      }
+
+      return response.exists || false;
+    } catch (error: any) {
+      console.error('Error checking user existence:', error);
+      return false;
+    }
+  };
+
+  const signUpWithEmail = async (email: string, password: string) => {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'FIREBASE_AUTH',
+        action: 'CREATE_USER_WITH_EMAIL',
+        email,
+        password
       });
 
       if (!response) {
@@ -60,11 +121,42 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (response.success && response.user) {
         setUser(response.user);
         await chrome.storage.local.set({ firebaseUser: response.user });
+        
+        // Sync user to MySQL database
+        await syncUserToBackend(response.user, 'email-password');
       } else {
-        throw new Error(response.error?.message || 'Google sign-in failed');
+        throw new Error(response.error?.message || 'Sign up failed');
       }
     } catch (error: any) {
-      console.error('Error signing in with Google:', error);
+      console.error('Error signing up with email:', error);
+      throw error;
+    }
+  };
+
+  const signInWithEmail = async (email: string, password: string) => {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'FIREBASE_AUTH',
+        action: 'SIGN_IN_WITH_EMAIL',
+        email,
+        password
+      });
+
+      if (!response) {
+        throw new Error('No response from background script. Make sure the extension is properly loaded.');
+      }
+
+      if (response.success && response.user) {
+        setUser(response.user);
+        await chrome.storage.local.set({ firebaseUser: response.user });
+        
+        // Sync user to MySQL database
+        await syncUserToBackend(response.user, 'email-password');
+      } else {
+        throw new Error(response.error?.message || 'Sign in failed');
+      }
+    } catch (error: any) {
+      console.error('Error signing in with email:', error);
       throw error;
     }
   };
@@ -86,7 +178,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
 
       // Save email for later completion
-      window.localStorage.setItem('emailForSignIn', email);
+      await chrome.storage.local.set({ emailForSignIn: email });
     } catch (error: any) {
       console.error('Error sending magic link:', error);
       throw error;
@@ -105,7 +197,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (response.success && response.user) {
         setUser(response.user);
         await chrome.storage.local.set({ firebaseUser: response.user });
-        window.localStorage.removeItem('emailForSignIn');
+        await chrome.storage.local.remove('emailForSignIn');
+        
+        // Sync user to MySQL database
+        await syncUserToBackend(response.user, 'magic-link');
       } else {
         throw new Error(response.error?.message || 'Magic link sign-in failed');
       }
@@ -115,11 +210,43 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
+  const sendVerificationEmail = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'FIREBASE_AUTH',
+        action: 'SEND_VERIFICATION_EMAIL'
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.error?.message || 'Failed to send verification email');
+      }
+    } catch (error: any) {
+      console.error('Error sending verification email:', error);
+      throw error;
+    }
+  };
+
+  const refreshUser = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'FIREBASE_AUTH',
+        action: 'CHECK_AUTH_STATE'
+      });
+
+      if (response && response.success && response.user) {
+        setUser(response.user);
+        await chrome.storage.local.set({ firebaseUser: response.user });
+      }
+    } catch (error: any) {
+      console.error('Error refreshing user:', error);
+    }
+  };
+
   const signOut = async () => {
     try {
       setUser(null);
       await chrome.storage.local.remove('firebaseUser');
-      window.localStorage.removeItem('emailForSignIn');
+      await chrome.storage.local.remove('emailForSignIn');
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;
@@ -129,9 +256,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const value = {
     user,
     loading,
-    signInWithGoogle,
+    checkUserExists,
+    signUpWithEmail,
+    signInWithEmail,
     sendMagicLink,
     completeMagicLinkSignIn,
+    sendVerificationEmail,
+    refreshUser,
     signOut,
   };
 

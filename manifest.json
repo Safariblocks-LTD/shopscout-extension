@@ -32,6 +32,13 @@
     "https://*.firebaseapp.com/*",
     "https://*.google.com/*"
   ],
+  "offscreen_documents": [
+    {
+      "matches": ["https://*/offscreen.html"],
+      "reason": "authentication",
+      "justification": "Needed to run Firebase Auth popups and reCAPTCHA in an isolated DOM."
+    }
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"

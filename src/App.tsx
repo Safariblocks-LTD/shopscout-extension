@@ -1,23 +1,45 @@
 import { useState, useEffect } from 'react';
-import { Bird, Sparkles, LogOut, User as UserIcon } from 'lucide-react';
+import { Bird, Sparkles, LogOut, User as UserIcon, Loader2 } from 'lucide-react';
 import ProductSnapshot from './components/ProductSnapshot';
-import PriceComparison from './components/PriceComparison';
 import PriceHistory from './components/PriceHistory';
 import ReviewSummary from './components/ReviewSummary';
 import TrustBadge from './components/TrustBadge';
 import ActionBar from './components/ActionBar';
 import EmptyState from './components/EmptyState';
-import LoadingState from './components/LoadingState';
-import AuthScreen from './components/AuthScreen';
-import { useAuth } from './contexts/AuthContext';
+import WelcomeScreen from './components/WelcomeScreen';
+import PriceComparison from './components/PriceComparison';
 import { ProductData, AnalysisData } from './types';
 
+const LoadingState = () => (
+  <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+    <div className="text-center">
+      <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-4" />
+      <p className="text-neutral-600 font-body">Loading...</p>
+    </div>
+  </div>
+);
+
 function App() {
-  const { user, loading: authLoading, signOut } = useAuth();
+  const [onboarded, setOnboarded] = useState(false);
+  const [nickname, setNickname] = useState('');
+  const [userEmail, setUserEmail] = useState('');
   const [product, setProduct] = useState<ProductData | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+
+  // Check if user is onboarded
+  useEffect(() => {
+    chrome.storage.local.get(['onboarded', 'nickname', 'email'], (result) => {
+      if (result.onboarded) {
+        setOnboarded(true);
+        setNickname(result.nickname || '');
+        setUserEmail(result.email || '');
+      } else {
+        setLoading(false);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     // Request current product data
@@ -117,13 +139,24 @@ function App() {
     );
   };
 
-  // Show auth screen if user is not authenticated
-  if (authLoading) {
-    return <LoadingState />;
-  }
+  // Handle onboarding completion
+  const handleOnboardingComplete = (nick: string, email: string) => {
+    setNickname(nick);
+    setUserEmail(email);
+    setOnboarded(true);
+  };
 
-  if (!user) {
-    return <AuthScreen />;
+  // Handle sign out
+  const handleSignOut = async () => {
+    await chrome.storage.local.clear();
+    setOnboarded(false);
+    setNickname('');
+    setUserEmail('');
+  };
+
+  // Show welcome screen if not onboarded
+  if (!onboarded) {
+    return <WelcomeScreen onComplete={handleOnboardingComplete} />;
   }
 
   if (loading) {
@@ -136,16 +169,9 @@ function App() {
 
   const bestDeal = analysis?.deals?.results?.[0];
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <div className="min-h-screen w-full overflow-x-hidden bg-neutral-50">
+      
       {/* Header with User Profile */}
       <header className="sticky top-0 z-10 bg-white border-b border-neutral-100 shadow-sm">
         <div className="px-4 py-3">
@@ -164,23 +190,15 @@ function App() {
             {/* User Profile */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 px-3 py-2 bg-neutral-50 rounded-xl border border-neutral-200 hover:border-neutral-300 transition-colors">
-                {user.photoURL ? (
-                  <img 
-                    src={user.photoURL} 
-                    alt={user.displayName || 'User'} 
-                    className="w-7 h-7 rounded-full border-2 border-primary/20"
-                  />
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
-                    <UserIcon className="w-4 h-4 text-white" />
-                  </div>
-                )}
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
+                  <UserIcon className="w-4 h-4 text-white" />
+                </div>
                 <div className="text-left">
                   <p className="text-xs font-semibold text-neutral-900 font-heading">
-                    {user.displayName || user.email?.split('@')[0] || 'User'}
+                    {nickname}
                   </p>
                   <p className="text-xs text-neutral-500 font-body truncate max-w-[120px]">
-                    {user.email}
+                    {userEmail}
                   </p>
                 </div>
               </div>

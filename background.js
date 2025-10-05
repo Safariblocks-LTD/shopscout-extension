@@ -585,14 +585,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           target: 'offscreen-auth',
           type: message.action,
           email: message.email,
+          password: message.password,
           url: message.url
         });
         
         console.log('[ShopScout] Received response from offscreen:', response);
-        await closeOffscreenDocument();
+        
+        // Keep offscreen document open for verification email sending
+        if (message.action !== 'SEND_VERIFICATION_EMAIL') {
+          await closeOffscreenDocument();
+        }
+        
         sendResponse(response);
       } catch (error) {
         console.error('[ShopScout] Firebase auth error:', error);
+        await closeOffscreenDocument();
         sendResponse({ success: false, error: { message: error.message } });
       }
     })();

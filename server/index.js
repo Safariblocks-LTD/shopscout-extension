@@ -7,6 +7,15 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import {
+  initializeDatabase,
+  User,
+  Wishlist,
+  PriceTracking,
+  PriceHistory,
+  SearchHistory,
+  userOperations
+} from './database.js';
 
 dotenv.config();
 
@@ -30,12 +39,24 @@ app.use(cors({
 
 app.use(express.json());
 
-// In-memory storage (replace with database in production)
-const storage = {
-  wishlist: new Map(),
-  tracked: new Map(),
-  priceHistory: new Map(),
-};
+// Middleware to extract and validate user ID
+function getUserId(req) {
+  const userId = req.headers['x-user-id'];
+  if (!userId || userId === 'anonymous') {
+    return null;
+  }
+  return userId;
+}
+
+// Middleware to require authentication
+function requireAuth(req, res, next) {
+  const userId = getUserId(req);
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  req.userId = userId;
+  next();
+}
 
 /**
  * Health check endpoint
@@ -124,27 +145,65 @@ app.get('/api/price-history/:productId', (req, res) => {
 });
 
 /**
+ * Create simple user (nickname + email only)
+ */
+app.post('/api/user/create', async (req, res) => {
+  try {
+    const { nickname, email } = req.body;
+    
+    if (!nickname || !email) {
+      return res.status(400).json({ error: 'nickname and email are required' });
+    }
+
+    // Generate a simple user ID
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create user in database
+    const user = await User.create({
+      id: userId,
+      email,
+      displayName: nickname,
+      emailVerified: false,
+      authMethod: 'simple'
+    });
+    
+    console.log(`[User] Created user: ${nickname} (${email})`);
+    
+    res.json({
+      success: true,
+      userId: user.id,
+      nickname: user.displayName,
+      email: user.email
+    });
+  } catch (error) {
+    console.error('[User] Create error:', error.message);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+/**
  * Save product to wishlist
  */
-app.post('/api/wishlist', (req, res) => {
+app.post('/api/wishlist', requireAuth, async (req, res) => {
   try {
-    const product = req.body;
-    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const { title, price, url, image, source, productId } = req.body;
 
-    const wishlistItem = {
-      id,
-      ...product,
-      savedAt: Date.now(),
-    };
+    const wishlistItem = await Wishlist.create({
+      userId: req.userId,
+      productId,
+      title,
+      price,
+      url,
+      image,
+      source
+    });
 
-    storage.wishlist.set(id, wishlistItem);
-
-    console.log(`[Wishlist] Saved product: ${product.title}`);
+    console.log(`[Wishlist] User ${req.userId} saved: ${title}`);
 
     res.json({
       success: true,
-      id,
-      item: wishlistItem,
+      id: wishlistItem.id,
+      item: wishlistItem
     });
   } catch (error) {
     console.error('[Wishlist] Error:', error.message);
@@ -155,9 +214,13 @@ app.post('/api/wishlist', (req, res) => {
 /**
  * Get user's wishlist
  */
-app.get('/api/wishlist', (req, res) => {
+app.get('/api/wishlist', requireAuth, async (req, res) => {
   try {
-    const wishlist = Array.from(storage.wishlist.values());
+    const wishlist = await Wishlist.findAll({
+      where: { userId: req.userId },
+      order: [['savedAt', 'DESC']]
+    });
+    
     res.json({ wishlist });
   } catch (error) {
     console.error('[Wishlist] Error:', error.message);
@@ -166,34 +229,58 @@ app.get('/api/wishlist', (req, res) => {
 });
 
 /**
+ * Delete item from wishlist
+ */
+app.delete('/api/wishlist/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const deleted = await Wishlist.destroy({
+      where: {
+        id,
+        userId: req.userId // Ensure user can only delete their own items
+      }
+    });
+    
+    if (deleted) {
+      console.log(`[Wishlist] User ${req.userId} removed item ${id}`);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: 'Item not found' });
+    }
+  } catch (error) {
+    console.error('[Wishlist] Error:', error.message);
+    res.status(500).json({ error: 'Failed to delete from wishlist' });
+  }
+});
+
+/**
  * Track price for a product
  */
-app.post('/api/track', (req, res) => {
+app.post('/api/track', requireAuth, async (req, res) => {
   try {
-    const { productId, targetPrice } = req.body;
+    const { productId, targetPrice, productTitle, productUrl, currentPrice } = req.body;
 
     if (!productId || !targetPrice) {
       return res.status(400).json({ error: 'productId and targetPrice are required' });
     }
 
-    const trackingId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    const trackingItem = {
-      id: trackingId,
+    const trackingItem = await PriceTracking.create({
+      userId: req.userId,
       productId,
+      productTitle,
+      productUrl,
+      currentPrice: currentPrice || targetPrice,
       targetPrice,
-      createdAt: Date.now(),
-      active: true,
-    };
+      active: true
+    });
 
-    storage.tracked.set(trackingId, trackingItem);
-
-    console.log(`[Track] Tracking product ${productId} for price ${targetPrice}`);
+    console.log(`[Track] User ${req.userId} tracking ${productId} for $${targetPrice}`);
 
     res.json({
       success: true,
-      id: trackingId,
-      item: trackingItem,
+      id: trackingItem.id,
+      item: trackingItem
     });
   } catch (error) {
     console.error('[Track] Error:', error.message);
@@ -204,13 +291,46 @@ app.post('/api/track', (req, res) => {
 /**
  * Get tracked products
  */
-app.get('/api/track', (req, res) => {
+app.get('/api/track', requireAuth, async (req, res) => {
   try {
-    const tracked = Array.from(storage.tracked.values()).filter(item => item.active);
+    const tracked = await PriceTracking.findAll({
+      where: {
+        userId: req.userId,
+        active: true
+      },
+      order: [['createdAt', 'DESC']]
+    });
+    
     res.json({ tracked });
   } catch (error) {
     console.error('[Track] Error:', error.message);
     res.status(500).json({ error: 'Failed to fetch tracked products' });
+  }
+});
+
+/**
+ * Delete tracked product
+ */
+app.delete('/api/track/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const deleted = await PriceTracking.destroy({
+      where: {
+        id,
+        userId: req.userId
+      }
+    });
+    
+    if (deleted) {
+      console.log(`[Track] User ${req.userId} removed tracking ${id}`);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: 'Tracking not found' });
+    }
+  } catch (error) {
+    console.error('[Track] Error:', error.message);
+    res.status(500).json({ error: 'Failed to delete tracking' });
   }
 });
 
@@ -279,31 +399,52 @@ function generateMockPriceHistory() {
   return { prices };
 }
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
+// Initialize database and start server
+async function startServer() {
+  // Initialize MySQL database
+  const dbConnected = await initializeDatabase();
+  
+  if (!dbConnected) {
+    console.log('\n⚠️  Server starting without database connection');
+    console.log('   Install MySQL and configure .env file\n');
+  }
+
+  // Start Express server
+  app.listen(PORT, () => {
+    console.log(`
 ╔═══════════════════════════════════════════════════════╗
 ║                                                       ║
-║   🛍️  ShopScout Backend Server v1.0                  ║
+║   🛍️  ShopScout Backend Server v2.0                  ║
 ║                                                       ║
 ║   Status: Running                                     ║
 ║   Port: ${PORT}                                        ║
+║   Database: ${dbConnected ? 'MySQL ✅' : 'Disconnected ❌'}                              ║
 ║   Environment: ${process.env.NODE_ENV || 'development'}                              ║
 ║                                                       ║
 ║   API Endpoints:                                      ║
 ║   • GET  /health                                      ║
+║   • POST /api/user/sync                               ║
 ║   • GET  /api/search?query=...                        ║
 ║   • GET  /api/price-history/:productId                ║
 ║   • POST /api/wishlist                                ║
 ║   • GET  /api/wishlist                                ║
+║   • DELETE /api/wishlist/:id                          ║
 ║   • POST /api/track                                   ║
 ║   • GET  /api/track                                   ║
+║   • DELETE /api/track/:id                             ║
 ║                                                       ║
 ╚═══════════════════════════════════════════════════════╝
-  `);
+    `);
 
-  if (!process.env.SERP_API_KEY || process.env.SERP_API_KEY === 'your_serpapi_key_here') {
-    console.log('⚠️  Warning: SERP API key not configured. Using mock data.');
-    console.log('   Get your API key from https://serpapi.com/\n');
-  }
+    if (!process.env.SERP_API_KEY || process.env.SERP_API_KEY === 'your_serpapi_key_here') {
+      console.log('⚠️  Warning: SERP API key not configured. Using mock data.');
+      console.log('   Get your API key from https://serpapi.com/\n');
+    }
+  });
+}
+
+// Start the server
+startServer().catch(error => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });
