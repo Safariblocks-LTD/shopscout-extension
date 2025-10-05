@@ -107,51 +107,179 @@ app.get('/health', (req, res) => {
 });
 
 /**
- * Search for product deals using SERP API
+ * Supported platforms for price comparison
+ * Includes both scrapable platforms and SERP API search platforms
+ */
+const SUPPORTED_PLATFORMS = {
+  // US Platforms (Scrapable)
+  amazon: { name: 'Amazon', country: 'US', domain: 'amazon.com', scrapable: true, region: 'US' },
+  walmart: { name: 'Walmart', country: 'US', domain: 'walmart.com', scrapable: true, region: 'US' },
+  ebay: { name: 'eBay', country: 'US', domain: 'ebay.com', scrapable: true, region: 'US' },
+  target: { name: 'Target', country: 'US', domain: 'target.com', scrapable: true, region: 'US' },
+  bestbuy: { name: 'Best Buy', country: 'US', domain: 'bestbuy.com', scrapable: true, region: 'US' },
+  
+  // UK Platforms (Scrapable)
+  amazon_uk: { name: 'Amazon UK', country: 'GB', domain: 'amazon.co.uk', scrapable: true, region: 'UK' },
+  ebay_uk: { name: 'eBay UK', country: 'GB', domain: 'ebay.co.uk', scrapable: true, region: 'UK' },
+  argos: { name: 'Argos', country: 'GB', domain: 'argos.co.uk', scrapable: true, region: 'UK' },
+  
+  // Kenya Platforms (Scrapable)
+  jumia_ke: { name: 'Jumia Kenya', country: 'KE', domain: 'jumia.co.ke', scrapable: true, region: 'KE' },
+  jiji_ke: { name: 'Jiji Kenya', country: 'KE', domain: 'jiji.co.ke', scrapable: true, region: 'KE' },
+  
+  // Nigeria Platforms (Scrapable)
+  jumia_ng: { name: 'Jumia Nigeria', country: 'NG', domain: 'jumia.com.ng', scrapable: true, region: 'NG' },
+  jiji_ng: { name: 'Jiji Nigeria', country: 'NG', domain: 'jiji.ng', scrapable: true, region: 'NG' },
+  
+  // Additional platforms for SERP API (not scrapable but searchable)
+  temu: { name: 'Temu', country: 'US', domain: 'temu.com', scrapable: false, region: 'US' },
+  aliexpress: { name: 'AliExpress', country: 'US', domain: 'aliexpress.com', scrapable: false, region: 'US' },
+  etsy: { name: 'Etsy', country: 'US', domain: 'etsy.com', scrapable: false, region: 'US' },
+  newegg: { name: 'Newegg', country: 'US', domain: 'newegg.com', scrapable: false, region: 'US' },
+  currys: { name: 'Currys', country: 'GB', domain: 'currys.co.uk', scrapable: false, region: 'UK' },
+  johnlewis: { name: 'John Lewis', country: 'GB', domain: 'johnlewis.com', scrapable: false, region: 'UK' },
+};
+
+/**
+ * Detect region from URL
+ */
+function detectRegion(url) {
+  if (!url) return 'US'; // Default to US
+  
+  const urlLower = url.toLowerCase();
+  
+  // UK domains
+  if (urlLower.includes('.co.uk') || urlLower.includes('uk.')) return 'UK';
+  
+  // Kenya domains
+  if (urlLower.includes('.co.ke') || urlLower.includes('kenya')) return 'KE';
+  
+  // Nigeria domains
+  if (urlLower.includes('.ng') || urlLower.includes('nigeria')) return 'NG';
+  
+  // Default to US
+  return 'US';
+}
+
+/**
+ * Search for product deals using SERP API with region-based smart comparison
  */
 app.get('/api/search', async (req, res) => {
   try {
-    const { query, image } = req.query;
+    const { query, image, platforms, sourceUrl, region: requestedRegion } = req.query;
 
     if (!query) {
       return res.status(400).json({ error: 'Query parameter is required' });
     }
 
-    console.log(`[Search] Query: ${query}`);
+    console.log(`[Search] Query: "${query}"`);
+
+    // Detect region from source URL or use requested region
+    const userRegion = requestedRegion || detectRegion(sourceUrl);
+    console.log(`[Search] User region: ${userRegion}`);
 
     // Check if SERP API key is configured
     if (!process.env.SERP_API_KEY || process.env.SERP_API_KEY === 'your_serpapi_key_here') {
-      console.log('[Search] SERP API key not configured, returning mock data');
+      console.log('[Search] ⚠️  SERP API key not configured, returning mock data');
       return res.json(getMockSearchResults(query, image));
     }
 
-    // Call SERP API
-    const params = {
-      api_key: process.env.SERP_API_KEY,
-      engine: 'google_shopping',
-      q: query,
-      num: 10,
-    };
+    console.log('[Search] ✅ Using SERP API with key:', process.env.SERP_API_KEY.substring(0, 10) + '...');
 
-    const response = await axios.get('https://serpapi.com/search.json', { params });
+    // Get platforms for the user's region
+    const regionPlatforms = Object.entries(SUPPORTED_PLATFORMS)
+      .filter(([key, platform]) => platform.region === userRegion)
+      .map(([key]) => key);
 
-    // Transform SERP API results to our format
-    const results = (response.data.shopping_results || []).slice(0, 5).map(item => ({
-      title: item.title,
-      price: parseFloat(item.price?.replace(/[^0-9.]/g, '') || '0'),
-      source: item.source || 'Unknown',
-      url: item.link || '#',
-      image: item.thumbnail,
-      shipping: item.delivery || 'Shipping info not available',
-      trustScore: calculateTrustScore(item),
+    // Use specified platforms or all platforms in user's region
+    const requestedPlatforms = platforms ? platforms.split(',') : regionPlatforms;
+    
+    console.log(`[Search] Searching ${requestedPlatforms.length} platforms in ${userRegion} region`);
+    
+    // Search across platforms in parallel
+    const searchPromises = requestedPlatforms.map(async (platformKey) => {
+      const platform = SUPPORTED_PLATFORMS[platformKey];
+      if (!platform) return null;
+
+      try {
+        console.log(`[Search] Searching on ${platform.name}...`);
+        
+        const params = {
+          api_key: process.env.SERP_API_KEY,
+          engine: 'google_shopping',
+          q: `${query} site:${platform.domain}`,
+          num: 5,
+          gl: platform.country.toLowerCase(),
+        };
+
+        const response = await axios.get('https://serpapi.com/search.json', { params });
+        
+        const results = (response.data.shopping_results || []).map(item => ({
+          title: item.title,
+          price: parseFloat(item.price?.replace(/[^0-9.]/g, '') || '0'),
+          currency: item.extracted_price?.currency || getCurrencyForRegion(userRegion),
+          source: platform.name,
+          platform: platformKey,
+          url: item.link || '#',
+          image: item.thumbnail,
+          shipping: item.delivery || 'Shipping info not available',
+          rating: item.rating || null,
+          reviews: item.reviews || 0,
+          trustScore: calculateTrustScore(item, platform),
+          inStock: item.tag !== 'Out of stock',
+          scrapable: platform.scrapable,
+          region: platform.region,
+        }));
+
+        console.log(`[Search] Found ${results.length} results on ${platform.name}`);
+        return results;
+      } catch (error) {
+        console.error(`[Search] Error searching ${platform.name}:`, error.message);
+        return [];
+      }
+    });
+
+    // Wait for all searches to complete
+    const allResults = await Promise.all(searchPromises);
+    
+    // Flatten and filter results
+    let combinedResults = allResults
+      .filter(r => r !== null)
+      .flat()
+      .filter(r => r.price > 0); // Remove items without prices
+
+    console.log(`[Search] ✅ Found ${combinedResults.length} total results`);
+
+    // Calculate quality score for each result
+    combinedResults = combinedResults.map(result => ({
+      ...result,
+      qualityScore: calculateQualityScore(result),
     }));
 
+    // Sort by quality score (best deals first)
+    combinedResults.sort((a, b) => b.qualityScore - a.qualityScore);
+
+    // Get top 2-5 best deals
+    const topDeals = combinedResults.slice(0, Math.min(5, Math.max(2, combinedResults.length)));
+    
+    console.log(`[Search] ✅ Top ${topDeals.length} deals selected from ${combinedResults.length} results`);
+
+    // Find absolute best deal
+    const bestDeal = topDeals.length > 0 ? topDeals[0] : null;
+
     res.json({
-      results,
+      results: topDeals, // Return top 2-5 best deals
+      allResults: combinedResults.slice(0, 20), // All results for reference
+      bestDeal,
+      region: userRegion,
+      platforms: requestedPlatforms.map(key => SUPPORTED_PLATFORMS[key]).filter(Boolean),
       timestamp: Date.now(),
+      totalResults: combinedResults.length,
+      topDealsCount: topDeals.length,
     });
   } catch (error) {
-    console.error('[Search] Error:', error.message);
+    console.error('[Search] ❌ Error:', error.message);
+    console.error('[Search] Stack:', error.stack);
     
     // Return mock data on error
     res.json(getMockSearchResults(req.query.query, req.query.image));
@@ -481,26 +609,121 @@ function getMockSearchResults(query, image) {
   };
 }
 
-function calculateTrustScore(item) {
+/**
+ * Get currency for region
+ */
+function getCurrencyForRegion(region) {
+  const currencies = {
+    US: 'USD',
+    UK: 'GBP',
+    KE: 'KES',
+    NG: 'NGN',
+  };
+  return currencies[region] || 'USD';
+}
+
+/**
+ * Calculate quality score (combines price, trust, rating, reviews)
+ * Higher score = better deal
+ */
+function calculateQualityScore(result) {
+  let score = 0;
+
+  // Trust score component (0-40 points)
+  score += (result.trustScore / 100) * 40;
+
+  // Rating component (0-25 points)
+  if (result.rating) {
+    score += (result.rating / 5) * 25;
+  }
+
+  // Reviews component (0-15 points)
+  if (result.reviews) {
+    const reviewScore = Math.min(result.reviews / 1000, 1) * 15;
+    score += reviewScore;
+  }
+
+  // Stock availability (0-10 points)
+  if (result.inStock) {
+    score += 10;
+  }
+
+  // Shipping bonus (0-10 points)
+  if (result.shipping && result.shipping.toLowerCase().includes('free')) {
+    score += 10;
+  }
+
+  // Price is handled by sorting separately
+  // Lower price = better, but we want high quality too
+  
+  return Math.round(score);
+}
+
+function calculateTrustScore(item, platform) {
   let score = 50;
 
-  // Boost for known retailers
-  const trustedSources = ['amazon', 'walmart', 'target', 'bestbuy'];
-  if (trustedSources.some(s => item.source?.toLowerCase().includes(s))) {
-    score += 30;
+  // Platform-based trust scores
+  const platformTrustScores = {
+    // US Platforms (highly trusted)
+    amazon: 35,
+    walmart: 35,
+    target: 30,
+    bestbuy: 30,
+    ebay: 25,
+    temu: 20,
+    aliexpress: 20,
+    etsy: 25,
+    newegg: 28,
+    
+    // UK Platforms
+    amazon_uk: 35,
+    ebay_uk: 25,
+    argos: 30,
+    currys: 28,
+    johnlewis: 32,
+    
+    // Kenya Platforms
+    jumia_ke: 25,
+    jiji_ke: 20,
+    
+    // Nigeria Platforms
+    jumia_ng: 25,
+    jiji_ng: 20,
+  };
+
+  // Add platform trust score
+  if (platform && platformTrustScores[platform.name?.toLowerCase().replace(/\s+/g, '_')]) {
+    score += platformTrustScores[platform.name.toLowerCase().replace(/\s+/g, '_')];
+  } else if (platform) {
+    // Use a lookup by checking if platform name contains key
+    for (const [key, value] of Object.entries(platformTrustScores)) {
+      if (platform.name?.toLowerCase().includes(key.split('_')[0])) {
+        score += value;
+        break;
+      }
+    }
   }
 
   // Boost for ratings
-  if (item.rating && item.rating >= 4.0) {
-    score += 15;
+  if (item.rating) {
+    if (item.rating >= 4.5) score += 15;
+    else if (item.rating >= 4.0) score += 10;
+    else if (item.rating >= 3.5) score += 5;
   }
 
   // Boost for reviews
-  if (item.reviews && item.reviews > 100) {
-    score += 5;
+  if (item.reviews) {
+    if (item.reviews > 500) score += 10;
+    else if (item.reviews > 100) score += 7;
+    else if (item.reviews > 50) score += 5;
   }
 
-  return Math.min(100, score);
+  // Penalty for out of stock
+  if (item.tag === 'Out of stock') {
+    score -= 20;
+  }
+
+  return Math.min(100, Math.max(0, score));
 }
 
 function generateMockPriceHistory() {

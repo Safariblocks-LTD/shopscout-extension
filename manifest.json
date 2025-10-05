@@ -22,22 +22,22 @@
     "https://*.amazon.com/*",
     "https://*.amazon.co.uk/*",
     "https://*.ebay.com/*",
+    "https://*.ebay.co.uk/*",
     "https://*.walmart.com/*",
     "https://*.temu.com/*",
     "https://*.shopify.com/*",
     "https://*.aliexpress.com/*",
     "https://*.target.com/*",
     "https://*.bestbuy.com/*",
+    "https://*.jumia.co.ke/*",
+    "https://*.jiji.co.ke/*",
+    "https://*.jumia.com.ng/*",
+    "https://*.jiji.ng/*",
+    "https://*.argos.co.uk/*",
     "https://*.googleapis.com/*",
     "https://*.firebaseapp.com/*",
-    "https://*.google.com/*"
-  ],
-  "offscreen_documents": [
-    {
-      "matches": ["https://*/offscreen.html"],
-      "reason": "authentication",
-      "justification": "Needed to run Firebase Auth popups and reCAPTCHA in an isolated DOM."
-    }
+    "https://*.google.com/*",
+    "http://localhost:*/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -49,12 +49,18 @@
         "https://*.amazon.com/*",
         "https://*.amazon.co.uk/*",
         "https://*.ebay.com/*",
+        "https://*.ebay.co.uk/*",
         "https://*.walmart.com/*",
         "https://*.temu.com/*",
         "https://*.shopify.com/*",
         "https://*.aliexpress.com/*",
         "https://*.target.com/*",
-        "https://*.bestbuy.com/*"
+        "https://*.bestbuy.com/*",
+        "https://*.jumia.co.ke/*",
+        "https://*.jiji.co.ke/*",
+        "https://*.jumia.com.ng/*",
+        "https://*.jiji.ng/*",
+        "https://*.argos.co.uk/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
