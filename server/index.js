@@ -26,10 +26,12 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow Chrome extension and localhost
+    // Allow Chrome extension, localhost, and production domains
     if (!origin || 
         origin.startsWith('chrome-extension://') || 
-        origin.startsWith('http://localhost')) {
+        origin.startsWith('http://localhost') ||
+        origin.startsWith('https://shopscout-auth.fly.dev') ||
+        origin.startsWith('https://shopscout-api.fly.dev')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));

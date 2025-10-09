@@ -3,7 +3,11 @@
  * Connects extension to backend server (port 3001)
  */
 
-const API_BASE_URL = 'http://localhost:3001';
+// Set USE_PRODUCTION to true when deploying
+const USE_PRODUCTION = true;
+const API_BASE_URL = USE_PRODUCTION 
+  ? 'https://shopscout-api.fly.dev' 
+  : 'http://localhost:3001';
 
 /**
  * Get authentication token from Firebase

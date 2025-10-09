@@ -1,28 +1,55 @@
 /**
- * MySQL Database Configuration and Models
+ * Database Configuration and Models
  * Using Sequelize ORM for clean, maintainable code
+ * Supports both MySQL and PostgreSQL
  */
 
 import { Sequelize, DataTypes } from 'sequelize';
 
-// Initialize Sequelize with MySQL
-const sequelize = new Sequelize(
-  process.env.DB_NAME || 'shopscout',
-  process.env.DB_USER || 'root',
-  process.env.DB_PASSWORD || '',
-  {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 3306,
-    dialect: 'mysql',
-    logging: false, // Set to console.log to see SQL queries
+// Determine database dialect and configuration
+const DATABASE_URL = process.env.DATABASE_URL;
+const dialect = process.env.DB_DIALECT || (DATABASE_URL ? 'postgres' : 'mysql');
+
+let sequelize;
+
+if (DATABASE_URL) {
+  // Use DATABASE_URL (for Fly.io PostgreSQL)
+  sequelize = new Sequelize(DATABASE_URL, {
+    dialect: 'postgres',
+    logging: false,
+    dialectOptions: {
+      ssl: process.env.NODE_ENV === 'production' ? {
+        require: true,
+        rejectUnauthorized: false
+      } : false
+    },
     pool: {
       max: 10,
       min: 0,
       acquire: 30000,
       idle: 10000
     }
-  }
-);
+  });
+} else {
+  // Use individual credentials (for local MySQL)
+  sequelize = new Sequelize(
+    process.env.DB_NAME || 'shopscout',
+    process.env.DB_USER || 'root',
+    process.env.DB_PASSWORD || '',
+    {
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || (dialect === 'postgres' ? 5432 : 3306),
+      dialect: dialect,
+      logging: false,
+      pool: {
+        max: 10,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      }
+    }
+  );
+}
 
 /**
  * User Model - Synced with Firebase Auth
@@ -295,7 +322,8 @@ async function initializeDatabase() {
   try {
     // Test connection
     await sequelize.authenticate();
-    console.log('✅ MySQL connection established successfully');
+    const dbType = dialect === 'postgres' ? 'PostgreSQL' : 'MySQL';
+    console.log(`✅ ${dbType} connection established successfully`);
 
     // Sync models (create tables if they don't exist)
     await sequelize.sync({ alter: true }); // Use { force: true } to drop and recreate
@@ -303,8 +331,8 @@ async function initializeDatabase() {
 
     return true;
   } catch (error) {
-    console.error('❌ Unable to connect to MySQL database:', error.message);
-    console.error('   Make sure MySQL is running and credentials are correct');
+    console.error('❌ Unable to connect to database:', error.message);
+    console.error('   Make sure database is running and credentials are correct');
     return false;
   }
 }

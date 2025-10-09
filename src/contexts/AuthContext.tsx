@@ -39,10 +39,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Sync user to MySQL backend
+  // Sync user to backend
   const syncUserToBackend = async (userData: FirebaseUser, authMethod: string) => {
     try {
-      const response = await fetch('http://localhost:3001/api/user/sync', {
+      const USE_PRODUCTION = true;
+      const API_URL = USE_PRODUCTION ? 'https://shopscout-api.fly.dev' : 'http://localhost:3001';
+      const response = await fetch(`${API_URL}/api/user/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

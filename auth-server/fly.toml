@@ -1,0 +1,33 @@
+# fly.toml app configuration file generated for shopscout-auth on 2025-10-09T10:26:45+03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'shopscout-auth'
+primary_region = 'iad'
+
+[build]
+
+[env]
+  AUTH_PORT = '8000'
+  NODE_ENV = 'production'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '15s'
+    timeout = '2s'
+    grace_period = '5s'
+    method = 'get'
+    path = '/health'
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

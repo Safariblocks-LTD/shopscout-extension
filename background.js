@@ -4,8 +4,12 @@
  */
 
 // Configuration
+// Set USE_PRODUCTION to true when deploying
+const USE_PRODUCTION = true;
+
 const CONFIG = {
-  BACKEND_URL: 'http://localhost:3001', // Update with your backend URL
+  BACKEND_URL: USE_PRODUCTION ? 'https://shopscout-api.fly.dev' : 'http://localhost:3001',
+  AUTH_URL: USE_PRODUCTION ? 'https://shopscout-auth.fly.dev' : 'http://localhost:8000',
   CACHE_TTL: 12 * 60 * 60 * 1000, // 12 hours
   MAX_CACHE_SIZE: 100,
   DEBOUNCE_DELAY: 500,
@@ -670,7 +674,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Poll for authentication success from web page
 async function checkAuthFromWebPage() {
   try {
-    const response = await fetch('http://localhost:8000/check-auth', {
+    const response = await fetch(`${CONFIG.AUTH_URL}/check-auth`, {
       method: 'GET',
       credentials: 'include'
     });
@@ -699,7 +703,7 @@ async function checkAuthFromWebPage() {
         // Close auth tabs
         console.log('[ShopScout] Closing auth tabs...');
         const tabs = await chrome.tabs.query({});
-        const authTabs = tabs.filter(t => t.url && (t.url.includes('localhost:8000') || t.url.includes('localhost:8001')));
+        const authTabs = tabs.filter(t => t.url && (t.url.includes(CONFIG.AUTH_URL) || t.url.includes('localhost:8000') || t.url.includes('localhost:8001')));
         
         if (authTabs.length > 0) {
           console.log(`[ShopScout] Found ${authTabs.length} auth tab(s) to close`);
@@ -776,8 +780,8 @@ chrome.action.onClicked.addListener((tab) => {
       // User not authenticated - open BOTH auth page AND sidebar
       console.log('[ShopScout] User not authenticated, opening auth page and sidebar');
       
-      // Use localhost auth server
-      const authUrl = 'http://localhost:8000';
+      // Use configured auth server
+      const authUrl = CONFIG.AUTH_URL;
       
       // First, open the sidebar (with AuthPrompt)
       chrome.sidePanel.open({ tabId: tab.id }).then(() => {
@@ -788,7 +792,7 @@ chrome.action.onClicked.addListener((tab) => {
       
       // Then, check if auth tab already exists
       chrome.tabs.query({}, (tabs) => {
-        const existingAuthTab = tabs.find(t => t.url && (t.url.includes('localhost:8000') || t.url.includes('localhost:8001')));
+        const existingAuthTab = tabs.find(t => t.url && (t.url.includes(CONFIG.AUTH_URL) || t.url.includes('localhost:8000') || t.url.includes('localhost:8001')));
         
         if (existingAuthTab) {
           // Focus existing auth tab
