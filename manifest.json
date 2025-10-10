@@ -37,7 +37,8 @@
     "https://*.googleapis.com/*",
     "https://*.firebaseapp.com/*",
     "https://*.google.com/*",
-    "https://*.fly.dev/*",
+    "https://shopscout-api.fly.dev/*",
+    "https://shopscout-auth.fly.dev/*",
     "https://*.supabase.co/*",
     "http://localhost:*/*"
   ],

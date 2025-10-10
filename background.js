@@ -4,12 +4,10 @@
  */
 
 // Configuration
-// Set USE_PRODUCTION to true when deploying
-const USE_PRODUCTION = true;
-
+// Always use production URLs in the built extension
 const CONFIG = {
-  BACKEND_URL: USE_PRODUCTION ? 'https://shopscout-api.fly.dev' : 'http://localhost:3001',
-  AUTH_URL: USE_PRODUCTION ? 'https://shopscout-auth.fly.dev' : 'http://localhost:8000',
+  BACKEND_URL: 'https://shopscout-api.fly.dev',
+  AUTH_URL: 'https://shopscout-auth.fly.dev',
   CACHE_TTL: 12 * 60 * 60 * 1000, // 12 hours
   MAX_CACHE_SIZE: 100,
   DEBOUNCE_DELAY: 500,
@@ -703,7 +701,7 @@ async function checkAuthFromWebPage() {
         // Close auth tabs
         console.log('[ShopScout] Closing auth tabs...');
         const tabs = await chrome.tabs.query({});
-        const authTabs = tabs.filter(t => t.url && (t.url.includes(CONFIG.AUTH_URL) || t.url.includes('localhost:8000') || t.url.includes('localhost:8001')));
+        const authTabs = tabs.filter(t => t.url && t.url.includes(CONFIG.AUTH_URL));
         
         if (authTabs.length > 0) {
           console.log(`[ShopScout] Found ${authTabs.length} auth tab(s) to close`);
@@ -782,35 +780,39 @@ chrome.action.onClicked.addListener((tab) => {
       
       // Use configured auth server
       const authUrl = CONFIG.AUTH_URL;
+      console.log('[ShopScout] Using auth URL:', authUrl);
       
       // First, open the sidebar (with AuthPrompt)
-      chrome.sidePanel.open({ tabId: tab.id }).then(() => {
+      try {
+        await chrome.sidePanel.open({ tabId: tab.id });
         console.log('[ShopScout] ✅ Sidebar opened with AuthPrompt');
-      }).catch(error => {
+      } catch (error) {
         console.error('[ShopScout] Error opening sidebar:', error);
-      });
+      }
       
-      // Then, check if auth tab already exists
-      chrome.tabs.query({}, (tabs) => {
-        const existingAuthTab = tabs.find(t => t.url && (t.url.includes(CONFIG.AUTH_URL) || t.url.includes('localhost:8000') || t.url.includes('localhost:8001')));
-        
-        if (existingAuthTab) {
-          // Focus existing auth tab
-          console.log('[ShopScout] Auth tab already exists, focusing it');
-          chrome.tabs.update(existingAuthTab.id, { active: true });
-          chrome.windows.update(existingAuthTab.windowId, { focused: true });
-        } else {
-          // Create new auth tab
-          console.log('[ShopScout] Creating new auth tab at:', authUrl);
-          chrome.tabs.create({ url: authUrl }, (newTab) => {
-            console.log('[ShopScout] Auth tab created:', newTab.id);
-          });
+      // Check if auth tab is already open
+      const tabs = await chrome.tabs.query({});
+      const authTabs = tabs.filter(t => t.url && t.url.includes(CONFIG.AUTH_URL));
+      
+      if (authTabs.length > 0) {
+        // Focus existing auth tab
+        console.log(`[ShopScout] Found ${authTabs.length} existing auth tab(s), focusing first one`);
+        await chrome.tabs.update(authTabs[0].id, { active: true });
+        await chrome.windows.update(authTabs[0].windowId, { focused: true });
+      } else {
+        // Open new auth tab with production URL
+        console.log(`[ShopScout] Opening auth page: ${authUrl}`);
+        try {
+          const tab = await chrome.tabs.create({ url: authUrl });
+          console.log(`[ShopScout] Auth tab opened with ID: ${tab.id}`);
+        } catch (error) {
+          console.error('[ShopScout] Error opening auth tab:', error);
         }
-      });
+      }
       return;
     }
     
-    // User is authenticated - open side panel immediately (maintains user gesture)
+{{ ... }}
     console.log('[ShopScout] User is authenticated, opening sidebar');
     chrome.sidePanel.open({ tabId: tab.id }).then(() => {
       console.log('[ShopScout] ✅ Sidebar opened successfully');

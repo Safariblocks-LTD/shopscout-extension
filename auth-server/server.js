@@ -1,6 +1,6 @@
 /**
  * ShopScout Authentication Web Server
- * Serves the authentication page on http://localhost:8000
+ * Production URL: https://shopscout-auth.fly.dev
  */
 
 import express from 'express';
@@ -16,7 +16,15 @@ const PORT = process.env.AUTH_PORT || 8000;
 
 // Middleware
 app.use(cors({
-  origin: true, // Allow any origin but reflect it back (not wildcard)
+  origin: [
+    'https://shopscout-api.fly.dev',
+    'https://shopscout-auth.fly.dev',
+    'chrome-extension://*',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:8000',
+    'http://localhost:8001'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
