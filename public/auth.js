@@ -11,13 +11,7 @@ import {
   browserLocalPersistence,
   setPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  getDoc,
-  serverTimestamp 
-} from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js';
+// Firestore removed - using Supabase PostgreSQL only
 
 // Firebase configuration
 const firebaseConfig = {
@@ -30,10 +24,9 @@ const firebaseConfig = {
   measurementId: "G-QPH51ENTS9"
 };
 
-// Initialize Firebase
+// Initialize Firebase Auth only (no Firestore)
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 
 // Set persistence
@@ -51,20 +44,16 @@ const loadingOverlay = document.getElementById('loadingOverlay');
 
 // Tab Switching
 signInTab.addEventListener('click', () => {
-  signInTab.classList.add('bg-white', 'text-primary', 'shadow-sm');
-  signInTab.classList.remove('text-gray-600');
-  signUpTab.classList.remove('bg-white', 'text-primary', 'shadow-sm');
-  signUpTab.classList.add('text-gray-600');
+  signInTab.classList.add('active');
+  signUpTab.classList.remove('active');
   signInForm.classList.remove('hidden');
   signUpForm.classList.add('hidden');
   hideStatus();
 });
 
 signUpTab.addEventListener('click', () => {
-  signUpTab.classList.add('bg-white', 'text-primary', 'shadow-sm');
-  signUpTab.classList.remove('text-gray-600');
-  signInTab.classList.remove('bg-white', 'text-primary', 'shadow-sm');
-  signInTab.classList.add('text-gray-600');
+  signUpTab.classList.add('active');
+  signInTab.classList.remove('active');
   signUpForm.classList.remove('hidden');
   signInForm.classList.add('hidden');
   hideStatus();
@@ -73,11 +62,7 @@ signUpTab.addEventListener('click', () => {
 // Status Message Functions
 function showStatus(message, type = 'info') {
   statusMessage.textContent = message;
-  statusMessage.className = `mt-4 p-4 rounded-lg ${
-    type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
-    type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
-    'bg-blue-100 text-blue-800 border border-blue-200'
-  }`;
+  statusMessage.className = type === 'success' ? 'success' : type === 'error' ? 'error' : '';
   statusMessage.classList.remove('hidden');
 }
 
@@ -96,7 +81,9 @@ function hideLoading() {
 // Sync user to backend and extension
 async function syncUserToBackend(user) {
   try {
-    const response = await fetch('http://localhost:3001/api/user/sync', {
+    // Use production backend URL
+    const API_URL = 'https://shopscout-api.fly.dev';
+    const response = await fetch(`${API_URL}/api/user/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -121,30 +108,10 @@ async function syncUserToBackend(user) {
 // Complete authentication and notify extension
 async function completeAuthentication(user, authMethod) {
   try {
-    // Create/update Firestore document
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-    
-    if (!userDoc.exists()) {
-      // New user
-      await setDoc(doc(db, 'users', user.uid), {
-        email: user.email,
-        displayName: user.displayName || user.email.split('@')[0],
-        photoURL: user.photoURL || null,
-        emailVerified: user.emailVerified,
-        createdAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
-        authMethod: authMethod
-      });
-    } else {
-      // Existing user - update last login
-      await setDoc(doc(db, 'users', user.uid), {
-        lastLoginAt: serverTimestamp(),
-        emailVerified: user.emailVerified
-      }, { merge: true });
-    }
-
-    // Sync to backend
+    // Sync to Supabase PostgreSQL via backend API (only database we use)
+    console.log('[Auth] Syncing user to Supabase PostgreSQL...');
     await syncUserToBackend(user);
+    console.log('[Auth] ✅ User synced to Supabase PostgreSQL');
 
     // Store user data for extension
     const userData = {

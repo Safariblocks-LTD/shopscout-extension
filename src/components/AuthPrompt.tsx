@@ -2,7 +2,9 @@ import { Lock, ExternalLink } from 'lucide-react';
 
 const AuthPrompt = () => {
   const openAuthPage = () => {
-    window.open('http://localhost:8000', '_blank');
+    // Use production auth URL
+    const authUrl = 'https://shopscout-auth.fly.dev';
+    window.open(authUrl, '_blank');
   };
 
   return (

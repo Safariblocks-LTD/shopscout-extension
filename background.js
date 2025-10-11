@@ -18,10 +18,17 @@ const OFFSCREEN_DOCUMENT_PATH = '/offscreen.html';
 let creatingOffscreenDocument;
 
 async function hasOffscreenDocument() {
-  const matchedClients = await clients.matchAll();
-  return matchedClients.some(
-    (client) => client.url.includes(chrome.runtime.id) && client.url.includes(OFFSCREEN_DOCUMENT_PATH)
-  );
+  // Check if offscreen document exists using chrome.runtime.getContexts (Chrome 116+)
+  if (chrome.runtime.getContexts) {
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH)]
+    });
+    return contexts.length > 0;
+  }
+  
+  // Fallback: assume it doesn't exist if API unavailable
+  return false;
 }
 
 async function setupOffscreenDocument() {
@@ -632,36 +639,67 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
   } else if (message.type === 'AUTH_SUCCESS') {
     // Handle authentication success from auth page
-    console.log('[ShopScout] Authentication successful:', message.user);
+    console.log('[ShopScout] 🎉 Authentication successful:', message.user.email);
     
     // Store user data
-    chrome.storage.local.set({
-      authenticated: true,
-      userId: message.user.uid,
-      userEmail: message.user.email,
-      displayName: message.user.displayName,
-      photoURL: message.user.photoURL,
-      emailVerified: message.user.emailVerified,
-      authMethod: message.user.authMethod,
-      authTimestamp: Date.now()
-    }).then(() => {
-      console.log('[ShopScout] User data stored');
-      sendResponse({ success: true });
-      
-      // Close auth tab if it exists
-      if (sender.tab) {
-        chrome.tabs.remove(sender.tab.id).catch(() => {});
-      }
-      
-      // Open side panel on current active tab
-      chrome.tabs.query({ active: true, currentWindow: true }).then(tabs => {
-        if (tabs[0]) {
-          chrome.sidePanel.open({ tabId: tabs[0].id }).catch(err => {
-            console.log('[ShopScout] Could not open side panel:', err);
-          });
+    (async () => {
+      try {
+        await chrome.storage.local.set({
+          authenticated: true,
+          userId: message.user.uid,
+          userEmail: message.user.email,
+          displayName: message.user.displayName,
+          photoURL: message.user.photoURL,
+          emailVerified: message.user.emailVerified,
+          authMethod: message.user.authMethod,
+          authTimestamp: Date.now(),
+          firebaseUser: message.user // Store full user object for AuthContext
+        });
+        
+        console.log('[ShopScout] ✅ User data stored successfully');
+        sendResponse({ success: true });
+        
+        // Give storage a moment to sync
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Close auth tab if it exists
+        if (sender.tab) {
+          console.log('[ShopScout] Closing auth tab:', sender.tab.id);
+          await chrome.tabs.remove(sender.tab.id).catch(() => {});
         }
-      });
-    });
+        
+        // Open/refresh sidebar on current active tab
+        console.log('[ShopScout] Opening sidebar after authentication...');
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        
+        if (tabs[0]) {
+          console.log('[ShopScout] Active tab found:', tabs[0].id);
+          try {
+            await chrome.sidePanel.open({ tabId: tabs[0].id });
+            console.log('[ShopScout] ✅ Sidebar opened successfully!');
+            
+            // Update state
+            state.sidePanelOpen = true;
+            state.activeTabId = tabs[0].id;
+          } catch (err) {
+            console.error('[ShopScout] Failed to open sidebar:', err.message);
+            
+            // Try global open as fallback
+            try {
+              await chrome.sidePanel.open({});
+              console.log('[ShopScout] ✅ Sidebar opened globally');
+            } catch (err2) {
+              console.error('[ShopScout] Failed to open sidebar globally:', err2.message);
+            }
+          }
+        } else {
+          console.warn('[ShopScout] No active tab found');
+        }
+      } catch (error) {
+        console.error('[ShopScout] Error in AUTH_SUCCESS handler:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
     
     return true; // Keep channel open for async response
   }
@@ -764,68 +802,62 @@ async function checkAuthFromWebPage() {
 }
 
 // Check for web authentication periodically
+// The auth page runs on production server and communicates via polling
 setInterval(checkAuthFromWebPage, 2000);
 
 // Handle extension icon click
 chrome.action.onClicked.addListener((tab) => {
-  // Use callback to maintain user gesture context
-  chrome.storage.local.get(['authenticated', 'userId'], (result) => {
-    const { authenticated, userId } = result;
+  console.log('[ShopScout] Icon clicked on tab:', tab.id);
+  
+  // CRITICAL: Open sidebar IMMEDIATELY to preserve user gesture
+  // Do this BEFORE any async operations that might break the gesture context
+  chrome.sidePanel.open({ tabId: tab.id }).then(() => {
+    console.log('[ShopScout] ✅ Sidebar opened successfully');
+    state.sidePanelOpen = true;
+    state.activeTabId = tab.id;
     
-    console.log('[ShopScout] Icon clicked. Auth status:', { authenticated, userId });
-    
-    if (!authenticated || !userId) {
-      // User not authenticated - open BOTH auth page AND sidebar
-      console.log('[ShopScout] User not authenticated, opening auth page and sidebar');
+    // Now check auth status and open auth page if needed
+    chrome.storage.local.get(['authenticated', 'userId']).then(({ authenticated, userId }) => {
+      console.log('[ShopScout] Auth status:', { authenticated, userId });
       
-      // Use configured auth server
-      const authUrl = CONFIG.AUTH_URL;
-      console.log('[ShopScout] Using auth URL:', authUrl);
-      
-      // First, open the sidebar (with AuthPrompt)
-      try {
-        await chrome.sidePanel.open({ tabId: tab.id });
-        console.log('[ShopScout] ✅ Sidebar opened with AuthPrompt');
-      } catch (error) {
-        console.error('[ShopScout] Error opening sidebar:', error);
-      }
-      
-      // Check if auth tab is already open
-      const tabs = await chrome.tabs.query({});
-      const authTabs = tabs.filter(t => t.url && t.url.includes(CONFIG.AUTH_URL));
-      
-      if (authTabs.length > 0) {
-        // Focus existing auth tab
-        console.log(`[ShopScout] Found ${authTabs.length} existing auth tab(s), focusing first one`);
-        await chrome.tabs.update(authTabs[0].id, { active: true });
-        await chrome.windows.update(authTabs[0].windowId, { focused: true });
+      if (!authenticated || !userId) {
+        // User not authenticated - open auth page
+        console.log('[ShopScout] User not authenticated, opening auth page');
+        
+        // Use production auth URL
+        const authUrl = CONFIG.AUTH_URL;
+        console.log('[ShopScout] Opening production auth page:', authUrl);
+        
+        // Check if auth tab is already open
+        chrome.tabs.query({}).then(tabs => {
+          const authTabs = tabs.filter(t => t.url && t.url.includes(CONFIG.AUTH_URL));
+          
+          if (authTabs.length > 0) {
+            // Focus existing auth tab
+            console.log(`[ShopScout] Focusing existing auth tab`);
+            chrome.tabs.update(authTabs[0].id, { active: true });
+            chrome.windows.update(authTabs[0].windowId, { focused: true });
+          } else {
+            // Open new auth tab with production auth URL
+            console.log(`[ShopScout] Opening production auth page: ${authUrl}`);
+            chrome.tabs.create({ url: authUrl }).then(authTab => {
+              console.log(`[ShopScout] ✅ Auth tab opened with ID: ${authTab.id}`);
+            }).catch(error => {
+              console.error('[ShopScout] Error opening auth tab:', error);
+            });
+          }
+        });
       } else {
-        // Open new auth tab with production URL
-        console.log(`[ShopScout] Opening auth page: ${authUrl}`);
-        try {
-          const tab = await chrome.tabs.create({ url: authUrl });
-          console.log(`[ShopScout] Auth tab opened with ID: ${tab.id}`);
-        } catch (error) {
-          console.error('[ShopScout] Error opening auth tab:', error);
-        }
+        // User is authenticated - request product scrape
+        console.log('[ShopScout] User is authenticated');
+        chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PRODUCT' }).catch(err => {
+          console.log('[ShopScout] No content script on this page');
+        });
       }
-      return;
-    }
-    
-{{ ... }}
-    console.log('[ShopScout] User is authenticated, opening sidebar');
-    chrome.sidePanel.open({ tabId: tab.id }).then(() => {
-      console.log('[ShopScout] ✅ Sidebar opened successfully');
-      state.sidePanelOpen = true;
-      state.activeTabId = tab.id;
-
-      // Request product scrape from content script
-      chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PRODUCT' }).catch(err => {
-        console.log('[ShopScout] No content script on this page');
-      });
-    }).catch(error => {
-      console.error('[ShopScout] Error opening sidebar:', error);
     });
+  }).catch(error => {
+    console.error('[ShopScout] ❌ Failed to open sidebar:', error.message);
+    console.log('[ShopScout] This usually means a user gesture issue or Chrome API problem');
   });
 });
 

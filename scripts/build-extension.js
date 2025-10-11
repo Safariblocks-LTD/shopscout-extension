@@ -67,19 +67,20 @@ if (existsSync(assetsDir)) {
   console.log('\n📦 Copying assets...');
   mkdirSync(distAssetsDir, { recursive: true });
   
-  function copyRecursive(src, dest) {
+  function copyRecursive(src, dest, relativePath = '') {
     const entries = readdirSync(src);
     
     entries.forEach(entry => {
       const srcPath = join(src, entry);
       const destPath = join(dest, entry);
+      const relPath = relativePath ? `${relativePath}/${entry}` : entry;
       
       if (statSync(srcPath).isDirectory()) {
         mkdirSync(destPath, { recursive: true });
-        copyRecursive(srcPath, destPath);
+        copyRecursive(srcPath, destPath, relPath);
       } else {
         copyFileSync(srcPath, destPath);
-        console.log(`  ✓ assets/${entry}`);
+        console.log(`  ✓ assets/${relPath}`);
       }
     });
   }

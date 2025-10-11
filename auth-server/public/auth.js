@@ -11,13 +11,7 @@ import {
   browserLocalPersistence,
   setPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  getDoc,
-  serverTimestamp 
-} from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js';
+// Firestore removed - using Supabase PostgreSQL only
 
 // Firebase configuration
 const firebaseConfig = {
@@ -30,10 +24,9 @@ const firebaseConfig = {
   measurementId: "G-QPH51ENTS9"
 };
 
-// Initialize Firebase
+// Initialize Firebase Auth only (no Firestore)
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 
 // Set persistence
@@ -144,7 +137,8 @@ async function completeAuthentication(user, authMethod) {
 
     // Send to server IMMEDIATELY for extension to pick up
     console.log('[Auth] Sending auth data to server (priority)...');
-    const serverPromise = fetch('http://localhost:8000/auth-success', {
+    const AUTH_SERVER_URL = window.location.origin; // Use current server URL
+    const serverPromise = fetch(`${AUTH_SERVER_URL}/auth-success`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user: userData })
@@ -158,36 +152,12 @@ async function completeAuthentication(user, authMethod) {
       console.error('[Auth] Error sending auth data:', error);
     });
 
-    // Do Firestore and backend sync in parallel (non-blocking)
-    console.log('[Auth] Starting background tasks (Firestore + Backend)...');
-    Promise.all([
-      // Firestore
-      getDoc(doc(db, 'users', user.uid)).then(userDoc => {
-        if (!userDoc.exists()) {
-          console.log('[Auth] Creating Firestore document');
-          return setDoc(doc(db, 'users', user.uid), {
-            email: user.email,
-            displayName: user.displayName || user.email.split('@')[0],
-            photoURL: user.photoURL || null,
-            emailVerified: user.emailVerified,
-            createdAt: serverTimestamp(),
-            lastLoginAt: serverTimestamp(),
-            authMethod: authMethod
-          });
-        } else {
-          console.log('[Auth] Updating Firestore document');
-          return setDoc(doc(db, 'users', user.uid), {
-            lastLoginAt: serverTimestamp(),
-            emailVerified: user.emailVerified
-          }, { merge: true });
-        }
-      }),
-      // Backend sync
-      syncUserToBackend(user)
-    ]).then(() => {
-      console.log('[Auth] Background tasks completed');
+    // Sync to Supabase PostgreSQL via backend API
+    console.log('[Auth] Syncing user to Supabase PostgreSQL...');
+    syncUserToBackend(user).then(() => {
+      console.log('[Auth] ✅ User synced to Supabase PostgreSQL');
     }).catch(err => {
-      console.warn('[Auth] Background task error (non-critical):', err);
+      console.warn('[Auth] Supabase sync error (non-critical):', err);
     });
 
     // Wait for server response before showing success

@@ -60,9 +60,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       });
 
       if (!response.ok) {
-        console.error('Failed to sync user to backend');
+        console.error('[Auth] Failed to sync user to Supabase PostgreSQL');
       } else {
-        console.log('[Auth] User synced to MySQL database');
+        console.log('[Auth] ✅ User synced to Supabase PostgreSQL database');
       }
     } catch (error) {
       console.error('[Auth] Error syncing user to backend:', error);
@@ -76,16 +76,35 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       try {
         const { firebaseUser } = await chrome.storage.local.get('firebaseUser');
         if (firebaseUser) {
+          console.log('[AuthContext] Found stored user:', firebaseUser.email);
           setUser(firebaseUser);
+        } else {
+          console.log('[AuthContext] No stored user found');
         }
       } catch (error) {
-        console.error('Error checking stored session:', error);
+        console.error('[AuthContext] Error checking stored session:', error);
       } finally {
         setLoading(false);
       }
     };
 
     checkStoredSession();
+
+    // Listen for storage changes (when user signs in on auth page)
+    const storageListener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.firebaseUser) {
+        const newUser = changes.firebaseUser.newValue;
+        console.log('[AuthContext] Storage changed - User updated:', newUser?.email);
+        setUser(newUser || null);
+      }
+    };
+
+    chrome.storage.onChanged.addListener(storageListener);
+
+    // Cleanup listener on unmount
+    return () => {
+      chrome.storage.onChanged.removeListener(storageListener);
+    };
   }, []);
 
   const checkUserExists = async (email: string): Promise<boolean> => {
@@ -124,7 +143,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setUser(response.user);
         await chrome.storage.local.set({ firebaseUser: response.user });
         
-        // Sync user to MySQL database
+        // Sync user to Supabase PostgreSQL
         await syncUserToBackend(response.user, 'email-password');
       } else {
         throw new Error(response.error?.message || 'Sign up failed');
@@ -152,7 +171,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setUser(response.user);
         await chrome.storage.local.set({ firebaseUser: response.user });
         
-        // Sync user to MySQL database
+        // Sync user to Supabase PostgreSQL
         await syncUserToBackend(response.user, 'email-password');
       } else {
         throw new Error(response.error?.message || 'Sign in failed');
@@ -201,7 +220,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         await chrome.storage.local.set({ firebaseUser: response.user });
         await chrome.storage.local.remove('emailForSignIn');
         
-        // Sync user to MySQL database
+        // Sync user to Supabase PostgreSQL
         await syncUserToBackend(response.user, 'magic-link');
       } else {
         throw new Error(response.error?.message || 'Magic link sign-in failed');

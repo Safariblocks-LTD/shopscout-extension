@@ -39,12 +39,10 @@
     "https://*.google.com/*",
     "https://shopscout-api.fly.dev/*",
     "https://shopscout-auth.fly.dev/*",
-    "https://*.supabase.co/*",
-    "http://localhost:*/*"
+    "https://*.supabase.co/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {

@@ -28,8 +28,9 @@ const WelcomeScreen = ({ onComplete }: WelcomeScreenProps) => {
     setError('');
 
     try {
-      // Save to backend
-      const response = await fetch('http://localhost:3001/api/user/create', {
+      // Save to backend - use production URL
+      const API_URL = 'https://shopscout-api.fly.dev';
+      const response = await fetch(`${API_URL}/api/user/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nickname: nickname.trim(), email: email.trim() })
