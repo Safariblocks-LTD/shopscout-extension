@@ -23,6 +23,12 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// In-memory storage for caching
+const storage = {
+  priceHistory: new Map(),
+  searchCache: new Map()
+};
+
 // Middleware
 app.use(cors({
   origin: (origin, callback) => {
@@ -214,7 +220,20 @@ app.get('/api/search', async (req, res) => {
           gl: platform.country.toLowerCase(),
         };
 
-        const response = await axios.get('https://serpapi.com/search.json', { params });
+        console.log(`[Search] SERP API request:`, { url: 'https://serpapi.com/search.json', query: params.q });
+        const response = await axios.get('https://serpapi.com/search.json', { 
+          params,
+          timeout: 10000 // 10 second timeout
+        });
+        
+        console.log(`[Search] SERP API response status:`, response.status);
+        console.log(`[Search] SERP API shopping_results count:`, response.data.shopping_results?.length || 0);
+        
+        if (!response.data.shopping_results || response.data.shopping_results.length === 0) {
+          console.log(`[Search] No shopping results from SERP API for ${platform.name}`);
+          // Return mock data for this platform
+          return generateMockResultsForPlatform(query, platform, platformKey, userRegion);
+        }
         
         const results = (response.data.shopping_results || []).map(item => ({
           title: item.title,
@@ -233,11 +252,13 @@ app.get('/api/search', async (req, res) => {
           region: platform.region,
         }));
 
-        console.log(`[Search] Found ${results.length} results on ${platform.name}`);
+        console.log(`[Search] ✅ Found ${results.length} results on ${platform.name}`);
         return results;
       } catch (error) {
-        console.error(`[Search] Error searching ${platform.name}:`, error.message);
-        return [];
+        console.error(`[Search] ❌ Error searching ${platform.name}:`, error.message);
+        console.error(`[Search] Error details:`, error.response?.data || error.stack);
+        // Return mock data for this platform
+        return generateMockResultsForPlatform(query, platform, platformKey, userRegion);
       }
     });
 
@@ -291,23 +312,52 @@ app.get('/api/search', async (req, res) => {
 /**
  * Get price history for a product
  */
-app.get('/api/price-history/:productId', (req, res) => {
+app.get('/api/price-history/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
+    console.log('[Price History] Request for product:', productId);
 
-    // Check if we have stored price history
+    // Check if we have stored price history in database
+    const userId = getUserId(req);
+    if (userId) {
+      try {
+        const history = await PriceHistory.findAll({
+          where: { productId },
+          order: [['recordedAt', 'DESC']],
+          limit: 30
+        });
+        
+        if (history && history.length > 0) {
+          console.log('[Price History] Found', history.length, 'records in database');
+          const formattedHistory = {
+            prices: history.map(h => ({
+              date: h.recordedAt.getTime(),
+              price: parseFloat(h.price)
+            }))
+          };
+          return res.json(formattedHistory);
+        }
+      } catch (dbError) {
+        console.warn('[Price History] Database error:', dbError.message);
+        // Continue to mock data
+      }
+    }
+
+    // Check cache
     if (storage.priceHistory.has(productId)) {
+      console.log('[Price History] Returning cached data');
       return res.json(storage.priceHistory.get(productId));
     }
 
     // Generate mock price history
+    console.log('[Price History] Generating mock data');
     const mockHistory = generateMockPriceHistory();
     storage.priceHistory.set(productId, mockHistory);
 
     res.json(mockHistory);
   } catch (error) {
-    console.error('[Price History] Error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch price history' });
+    console.error('[Price History] Error:', error.message, error.stack);
+    res.status(500).json({ error: 'Failed to fetch price history', message: error.message });
   }
 });
 
@@ -726,6 +776,33 @@ function calculateTrustScore(item, platform) {
   }
 
   return Math.min(100, Math.max(0, score));
+}
+
+/**
+ * Generate mock results for a platform (fallback when SERP API fails)
+ */
+function generateMockResultsForPlatform(query, platform, platformKey, region) {
+  const basePrice = 30 + Math.random() * 70; // $30-$100
+  const numResults = 2 + Math.floor(Math.random() * 3); // 2-4 results
+  
+  return Array.from({ length: numResults }, (_, i) => ({
+    title: `${query} - ${platform.name} Deal ${i + 1}`,
+    price: parseFloat((basePrice + (Math.random() * 20 - 10)).toFixed(2)),
+    currency: getCurrencyForRegion(region),
+    source: platform.name,
+    platform: platformKey,
+    url: `https://${platform.domain}/search?q=${encodeURIComponent(query)}`,
+    image: null,
+    shipping: i === 0 ? 'Free shipping' : `$${(Math.random() * 10).toFixed(2)} shipping`,
+    rating: 3.5 + Math.random() * 1.5,
+    reviews: Math.floor(Math.random() * 1000) + 100,
+    trustScore: 70 + Math.floor(Math.random() * 25),
+    inStock: Math.random() > 0.1,
+    scrapable: platform.scrapable,
+    region: platform.region,
+    qualityScore: 0,
+    isMockData: true
+  }));
 }
 
 function generateMockPriceHistory() {

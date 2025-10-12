@@ -333,7 +333,7 @@ const utils = {
   /**
    * Wait for element to appear
    */
-  waitForElement(selector, timeout = 5000) {
+  waitForElement(selector, timeout = 2000) {
     return new Promise((resolve) => {
       const element = document.querySelector(selector);
       if (element) {
@@ -382,6 +382,7 @@ class ProductScraper {
     }
 
     console.log(`[ShopScout] Scraping product from ${this.site}`);
+    console.log('[ShopScout] Using selectors:', this.config.selectors);
 
     const data = {
       site: this.site,
@@ -400,19 +401,23 @@ class ProductScraper {
     // Extract title
     const titleElement = utils.querySelector(this.config.selectors.title);
     data.title = utils.extractText(titleElement);
+    console.log('[ShopScout] Title found:', data.title, 'Element:', titleElement);
 
     // Extract price
     const priceElement = utils.querySelector(this.config.selectors.price);
     data.priceRaw = utils.extractText(priceElement);
     data.price = utils.normalizePrice(data.priceRaw);
+    console.log('[ShopScout] Price found:', data.price, 'Raw:', data.priceRaw, 'Element:', priceElement);
 
     // Extract image
     const imageElement = utils.querySelector(this.config.selectors.image);
     data.image = utils.extractImageUrl(imageElement);
+    console.log('[ShopScout] Image found:', data.image ? 'Yes' : 'No', 'Element:', imageElement);
 
     // Extract seller
     const sellerElement = utils.querySelector(this.config.selectors.seller);
     data.seller = utils.extractText(sellerElement);
+    console.log('[ShopScout] Seller found:', data.seller, 'Element:', sellerElement);
 
     // Extract product ID (ASIN, item ID, etc.)
     if (typeof this.config.selectors.asin === 'function') {
@@ -420,27 +425,41 @@ class ProductScraper {
     } else if (typeof this.config.selectors.itemId === 'function') {
       data.productId = this.config.selectors.itemId();
     }
+    console.log('[ShopScout] Product ID:', data.productId);
 
     // Extract reviews count
     if (this.config.selectors.reviews) {
       const reviewsElement = utils.querySelector(this.config.selectors.reviews);
       data.reviews = utils.extractText(reviewsElement);
+      console.log('[ShopScout] Reviews found:', data.reviews);
     }
 
     // Extract rating
     if (this.config.selectors.rating) {
       const ratingElement = utils.querySelector(this.config.selectors.rating);
       data.rating = utils.extractText(ratingElement);
+      console.log('[ShopScout] Rating found:', data.rating);
     }
 
     // Validate essential data
     if (!data.title || !data.price) {
-      console.log('[ShopScout] Missing essential product data');
+      console.warn('[ShopScout] ⚠️ Missing essential product data!');
+      console.warn('[ShopScout] Title:', data.title);
+      console.warn('[ShopScout] Price:', data.price);
+      console.warn('[ShopScout] Trying to find elements on page...');
+      
+      // Debug: Try to find what's actually on the page
+      const allH1 = document.querySelectorAll('h1');
+      console.log('[ShopScout] Found', allH1.length, 'h1 elements on page');
+      allH1.forEach((h1, i) => {
+        console.log(`[ShopScout] H1 #${i}:`, h1.textContent?.substring(0, 100));
+      });
+      
       return null;
     }
 
     this.productData = data;
-    console.log('[ShopScout] Product scraped successfully:', data);
+    console.log('[ShopScout] ✅ Product scraped successfully:', data);
     
     return data;
   }
@@ -462,29 +481,62 @@ class ProductScraper {
  */
 let scraper = null;
 let lastScrapedUrl = null;
+let isInitializing = false;
 
 async function initialize() {
-  scraper = new ProductScraper();
-  
-  // Check if this is a product page
-  if (!scraper.isProductPage()) {
-    console.log('[ShopScout] Not a product page');
+  // Prevent concurrent initializations
+  if (isInitializing) {
+    console.log('[ShopScout] Already initializing, skipping...');
     return;
   }
-
-  // Scrape product data
-  const productData = await scraper.scrape();
   
-  if (productData && productData.url !== lastScrapedUrl) {
-    lastScrapedUrl = productData.url;
+  // Check if URL has changed
+  if (lastScrapedUrl === window.location.href) {
+    console.log('[ShopScout] Same URL, skipping re-scan');
+    return;
+  }
+  
+  isInitializing = true;
+  
+  try {
+    console.log('[ShopScout] 🚀 Initializing scraper for:', window.location.href);
+    scraper = new ProductScraper();
     
-    // Send to background script
-    chrome.runtime.sendMessage({
-      type: 'PRODUCT_DETECTED',
-      data: productData
-    }).catch(err => {
-      console.log('[ShopScout] Error sending message:', err);
-    });
+    console.log('[ShopScout] Detected site:', scraper.site);
+    console.log('[ShopScout] Has config:', !!scraper.config);
+    
+    // Check if this is a product page
+    if (!scraper.isProductPage()) {
+      console.log('[ShopScout] Not a product page - no title element found');
+      return;
+    }
+
+    console.log('[ShopScout] ✅ Product page detected! Starting scrape...');
+    
+    // Scrape product data
+    const productData = await scraper.scrape();
+    
+    if (productData) {
+      lastScrapedUrl = productData.url;
+      
+      console.log('[ShopScout] 📤 Sending product data to background script...');
+      
+      // Send to background script
+      chrome.runtime.sendMessage({
+        type: 'PRODUCT_DETECTED',
+        data: productData
+      }).then(() => {
+        console.log('[ShopScout] ✅ Product data sent successfully');
+      }).catch(err => {
+        console.error('[ShopScout] ❌ Error sending message:', err);
+      });
+    } else {
+      console.warn('[ShopScout] ⚠️ Scraping returned no data');
+    }
+  } catch (error) {
+    console.error('[ShopScout] ❌ Initialization error:', error);
+  } finally {
+    isInitializing = false;
   }
 }
 
@@ -533,28 +585,116 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Observe DOM changes for dynamic content
-const observer = new MutationObserver((mutations) => {
-  // Debounce re-initialization
-  clearTimeout(observer.timer);
-  observer.timer = setTimeout(() => {
-    if (scraper && scraper.isProductPage() && window.location.href !== lastScrapedUrl) {
+// ============================================================================
+// NAVIGATION DETECTION SYSTEM - Production Grade
+// ============================================================================
+
+let currentUrl = window.location.href;
+let urlCheckInterval = null;
+let domObserver = null;
+
+/**
+ * Detect URL changes with multiple strategies for maximum reliability
+ */
+function startNavigationDetection() {
+  console.log('[ShopScout] 🎯 Starting navigation detection system...');
+  
+  // Strategy 1: High-frequency URL polling (100ms for instant detection)
+  urlCheckInterval = setInterval(() => {
+    if (window.location.href !== currentUrl) {
+      console.log('[ShopScout] 🔄 URL change detected:', window.location.href);
+      currentUrl = window.location.href;
+      lastScrapedUrl = null;
       initialize();
     }
-  }, 1000);
-});
-
-// Start observing
-observer.observe(document.body, {
-  childList: true,
-  subtree: true
-});
-
-// Initialize on load
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initialize);
-} else {
-  initialize();
+  }, 100); // Check every 100ms for instant response
+  
+  // Strategy 2: Intercept history API (for SPAs like Amazon)
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState;
+  
+  history.pushState = function(...args) {
+    originalPushState.apply(this, args);
+    console.log('[ShopScout] 📍 pushState intercepted');
+    currentUrl = window.location.href;
+    lastScrapedUrl = null;
+    // Use setTimeout to ensure DOM is updated
+    setTimeout(() => initialize(), 50);
+    return;
+  };
+  
+  history.replaceState = function(...args) {
+    originalReplaceState.apply(this, args);
+    console.log('[ShopScout] 📍 replaceState intercepted');
+    currentUrl = window.location.href;
+    lastScrapedUrl = null;
+    setTimeout(() => initialize(), 50);
+    return;
+  };
+  
+  // Strategy 3: Listen for popstate (back/forward buttons)
+  window.addEventListener('popstate', () => {
+    console.log('[ShopScout] ⬅️ popstate event detected');
+    currentUrl = window.location.href;
+    lastScrapedUrl = null;
+    setTimeout(() => initialize(), 50);
+  });
+  
+  // Strategy 4: DOM observer for dynamic content
+  domObserver = new MutationObserver(() => {
+    // Only trigger if URL changed
+    if (window.location.href !== currentUrl) {
+      console.log('[ShopScout] 🔍 DOM change + URL change detected');
+      currentUrl = window.location.href;
+      lastScrapedUrl = null;
+      initialize();
+    }
+  });
+  
+  // Start observing DOM
+  if (document.body) {
+    domObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+  
+  // Strategy 5: Listen for click events on links
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a');
+    if (link && link.href && link.href.startsWith(window.location.origin)) {
+      console.log('[ShopScout] 🖱️ Internal link clicked, preparing for navigation...');
+      // Check for URL change after a short delay
+      setTimeout(() => {
+        if (window.location.href !== currentUrl) {
+          console.log('[ShopScout] 🔄 Navigation confirmed after click');
+          currentUrl = window.location.href;
+          lastScrapedUrl = null;
+          initialize();
+        }
+      }, 100);
+    }
+  }, true); // Use capture phase
+  
+  console.log('[ShopScout] ✅ Navigation detection system active');
 }
 
-console.log('[ShopScout] Content script loaded');
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+// Initialize immediately if page is already loaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('[ShopScout] 📄 DOM loaded');
+    initialize();
+    startNavigationDetection();
+  });
+} else {
+  console.log('[ShopScout] 📄 Document already loaded');
+  // Initialize immediately
+  initialize();
+  startNavigationDetection();
+}
+
+console.log('[ShopScout] 🚀 Content script loaded on:', window.location.href);

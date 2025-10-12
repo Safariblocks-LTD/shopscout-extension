@@ -64,7 +64,8 @@
         "https://*.argos.co.uk/*"
       ],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_end",
+      "all_frames": false
     }
   ],
   "side_panel": {
