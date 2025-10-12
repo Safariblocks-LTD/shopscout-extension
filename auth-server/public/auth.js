@@ -93,7 +93,11 @@ function hideLoading() {
 async function syncUserToBackend(user) {
   try {
     console.log('[Auth] Attempting backend sync for:', user.email);
-    const response = await fetch('http://localhost:3001/api/user/sync', {
+    
+    // Use production URL - always use production for deployed auth server
+    const BACKEND_URL = 'https://shopscout-api.fly.dev';
+    
+    const response = await fetch(`${BACKEND_URL}/api/user/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -364,4 +368,4 @@ if (isSignInWithEmailLink(auth, window.location.href)) {
   }
 }
 
-console.log('[Auth Page] Initialized on http://localhost:8000');
+console.log('[Auth Page] Initialized and ready for authentication');

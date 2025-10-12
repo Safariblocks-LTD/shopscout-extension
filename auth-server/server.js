@@ -55,14 +55,22 @@ app.get('/check-auth', (req, res) => {
   console.log('[Auth Server] Check-auth request received');
   
   if (authData) {
-    // Check if data is not too old (30 seconds max)
+    // Check if data is not too old (60 seconds max - increased for better reliability)
     const now = Date.now();
-    if (authDataTimestamp && (now - authDataTimestamp) < 30000) {
+    if (authDataTimestamp && (now - authDataTimestamp) < 60000) {
       const data = authData;
-      authData = null; // Clear after reading
-      authDataTimestamp = null;
+      // Don't clear immediately - let multiple polls succeed
       console.log('[Auth Server] Returning auth data for:', data.email);
       res.json({ authenticated: true, user: data });
+      
+      // Clear after 5 seconds to allow multiple polls
+      setTimeout(() => {
+        if (authData && authData.uid === data.uid) {
+          authData = null;
+          authDataTimestamp = null;
+          console.log('[Auth Server] Auth data cleared after successful delivery');
+        }
+      }, 5000);
     } else {
       // Data too old, clear it
       authData = null;

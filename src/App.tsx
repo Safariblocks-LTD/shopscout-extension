@@ -32,18 +32,24 @@ function App() {
   useEffect(() => {
     const checkAuth = () => {
       chrome.storage.local.get(['authenticated', 'displayName', 'userEmail', 'userId'], (result) => {
+        console.log('[ShopScout Sidebar] Auth check result:', result);
+        
         if (result.authenticated && result.userId) {
+          console.log('[ShopScout Sidebar] ✅ User authenticated:', result.userEmail);
           setOnboarded(true);
-          setNickname(result.displayName || '');
+          setNickname(result.displayName || result.userEmail?.split('@')[0] || 'User');
           setUserEmail(result.userEmail || '');
           setLoading(false);
         } else {
           // Check legacy onboarding
           chrome.storage.local.get(['onboarded', 'nickname', 'email'], (legacyResult) => {
             if (legacyResult.onboarded) {
+              console.log('[ShopScout Sidebar] Using legacy auth');
               setOnboarded(true);
               setNickname(legacyResult.nickname || '');
               setUserEmail(legacyResult.email || '');
+            } else {
+              console.log('[ShopScout Sidebar] No authentication found');
             }
             setLoading(false);
           });
@@ -52,6 +58,7 @@ function App() {
     };
 
     // Check immediately
+    console.log('[ShopScout Sidebar] Starting authentication check...');
     checkAuth();
 
     // Then check every 2 seconds to detect authentication

@@ -712,7 +712,10 @@ async function checkAuthFromWebPage() {
   try {
     const response = await fetch(`${CONFIG.AUTH_URL}/check-auth`, {
       method: 'GET',
-      credentials: 'include'
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json'
+      }
     });
     
     if (response.ok) {
@@ -721,20 +724,32 @@ async function checkAuthFromWebPage() {
       if (data.authenticated && data.user) {
         console.log('[ShopScout] 🎉 Authentication detected from web page!');
         console.log('[ShopScout] User:', data.user.email);
+        console.log('[ShopScout] Auth method:', data.user.authMethod);
         
-        // Store user data
+        // Store user data with all required fields
         await chrome.storage.local.set({
           authenticated: true,
           userId: data.user.uid,
           userEmail: data.user.email,
-          displayName: data.user.displayName,
-          photoURL: data.user.photoURL,
-          emailVerified: data.user.emailVerified,
-          authMethod: data.user.authMethod,
-          authTimestamp: Date.now()
+          displayName: data.user.displayName || data.user.email.split('@')[0],
+          photoURL: data.user.photoURL || null,
+          emailVerified: data.user.emailVerified || false,
+          authMethod: data.user.authMethod || 'unknown',
+          authTimestamp: Date.now(),
+          firebaseUser: {
+            uid: data.user.uid,
+            email: data.user.email,
+            displayName: data.user.displayName || data.user.email.split('@')[0],
+            photoURL: data.user.photoURL || null,
+            emailVerified: data.user.emailVerified || false
+          }
         });
         
-        console.log('[ShopScout] ✅ User data stored successfully');
+        console.log('[ShopScout] ✅ User data stored successfully in chrome.storage.local');
+        
+        // Verify storage
+        const verification = await chrome.storage.local.get(['authenticated', 'userId', 'userEmail']);
+        console.log('[ShopScout] Storage verification:', verification);
         
         // Close auth tabs
         console.log('[ShopScout] Closing auth tabs...');
@@ -751,6 +766,9 @@ async function checkAuthFromWebPage() {
           }
         }
         
+        // Give storage a moment to fully sync
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Open sidebar - try multiple approaches
         console.log('[ShopScout] Opening sidebar...');
         
@@ -762,6 +780,8 @@ async function checkAuthFromWebPage() {
           try {
             await chrome.sidePanel.open({ tabId: activeTabs[0].id });
             console.log('[ShopScout] ✅ Sidebar opened on active tab!');
+            state.sidePanelOpen = true;
+            state.activeTabId = activeTabs[0].id;
             return true;
           } catch (err) {
             console.error('[ShopScout] Failed to open on active tab:', err.message);
@@ -776,6 +796,8 @@ async function checkAuthFromWebPage() {
             console.log('[ShopScout] Trying first tab:', firstTab.id);
             await chrome.sidePanel.open({ tabId: firstTab.id });
             console.log('[ShopScout] ✅ Sidebar opened on first tab!');
+            state.sidePanelOpen = true;
+            state.activeTabId = firstTab.id;
             return true;
           }
         } catch (err) {
@@ -786,17 +808,24 @@ async function checkAuthFromWebPage() {
         try {
           await chrome.sidePanel.open({});
           console.log('[ShopScout] ✅ Sidebar opened globally!');
+          state.sidePanelOpen = true;
           return true;
         } catch (err) {
           console.error('[ShopScout] Failed to open globally:', err.message);
         }
         
         console.warn('[ShopScout] ⚠️ Could not open sidebar with any method');
+        console.log('[ShopScout] User can manually click the extension icon to open sidebar');
         return true;
       }
+    } else {
+      console.error('[ShopScout] Auth check failed with status:', response.status);
     }
   } catch (error) {
-    // Silently fail - auth server might not be running yet
+    // Only log errors that aren't network-related (server might not be ready)
+    if (error.message && !error.message.includes('fetch')) {
+      console.error('[ShopScout] Auth check error:', error.message);
+    }
   }
   return false;
 }
