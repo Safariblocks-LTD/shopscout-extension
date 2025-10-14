@@ -41,7 +41,7 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
             <div
               key={index}
               className={cn(
-                'relative group rounded-2xl border-2 transition-all duration-300 overflow-hidden',
+                'relative group rounded-2xl border-2 transition-all duration-300',
                 isBestDeal
                   ? 'border-accent bg-gradient-to-br from-accent/5 to-accent/10 shadow-glow-green hover:shadow-glow-green'
                   : 'border-neutral-200 bg-white hover:border-primary/30 hover:shadow-card-hover card-lift'
@@ -49,7 +49,7 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
             >
               {/* Best Deal Badge */}
               {isBestDeal && (
-                <div className="absolute -top-1 -right-1 z-10">
+                <div className="absolute -top-1 -right-1 z-[5]">
                   <div className="px-3 py-1 bg-gradient-to-r from-accent to-accent-dark text-white text-xs font-bold uppercase tracking-wide rounded-bl-xl rounded-tr-xl shadow-lg animate-shine">
                     ✓ Best Deal
                   </div>
@@ -134,7 +134,7 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
                       target="_blank"
                       rel="noopener noreferrer"
                       className={cn(
-                        'inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95 group',
+                        'relative z-10 inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95 group',
                         isBestDeal
                           ? 'bg-gradient-to-r from-accent to-accent-dark text-white shadow-md hover:shadow-glow-green'
                           : 'bg-primary/10 text-primary-dark hover:bg-primary hover:text-white'
@@ -157,8 +157,8 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
           <div className="inline-flex items-center justify-center w-16 h-16 bg-neutral-100 rounded-full mb-4">
             <Package className="w-8 h-8 text-neutral-400" />
           </div>
-          <p className="text-sm font-body text-neutral-600 mb-1">No alternative deals found yet</p>
-          <p className="text-xs font-body text-neutral-400">We're searching for better prices...</p>
+          <p className="text-sm font-body text-neutral-600 mb-1">Searching for deals...</p>
+          <p className="text-xs font-body text-neutral-400">Finding the best prices across stores</p>
         </div>
       )}
     </div>

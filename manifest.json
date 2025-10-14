@@ -16,8 +16,17 @@
     "notifications",
     "alarms",
     "sidePanel",
-    "offscreen"
+    "offscreen",
+    "aiLanguageModelOriginTrial"
   ],
+  "ai_origin_trial": {
+    "trial_tokens": [
+      "AyaEiF0V344lUNkFj5fIm/3crccwuaNhg6Nh9vEMqLialpBp2vbLdTza8dX5MMTrNSTMjrAAwLNALtTvg+9S5gAAAACMeyJvcmlnaW4iOiJjaHJvbWUtZXh0ZW5zaW9uOi8vZ2xrb2prYWJlbWJtbm1wcGxpZnBjYW5iY2Vjb2ZoZ2siLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElGb3JFeHRlbnNpb24iLCJleHBpcnkiOjE3NjA0ODYzOTksImlzVGhpcmRQYXJ0eSI6dHJ1ZX0=",
+      "A82OlKDnumYvUTbHq9ByjXe9oPaXzFH1uq/Vc1TzM5zsAtFGa4rfd4JxPN9i9Hg7dw4MHdbnzfwqIB+u3dChxQQAAACCeyJvcmlnaW4iOiJjaHJvbWUtZXh0ZW5zaW9uOi8vZ2xrb2prYWJlbWJtbm1wcGxpZnBjYW5iY2Vjb2ZoZ2siLCJmZWF0dXJlIjoiQUlSZXdyaXRlckFQSSIsImV4cGlyeSI6MTc2OTQ3MjAwMCwiaXNUaGlyZFBhcnR5Ijp0cnVlfQ==",
+      "A/gdKBvEil1ZBFgZI1MtTZacS0xghXhgVy1PCk40Shg4lxMKnKx2WcaMcRcc1WbqRr4hFptcZVh1FFg5OmyyuggAAACHeyJvcmlnaW4iOiJjaHJvbWUtZXh0ZW5zaW9uOi8vZ2xrb2prYWJlbWJtbm1wcGxpZnBjYW5iY2Vjb2ZoZ2siLCJmZWF0dXJlIjoiQUlTdW1tYXJpemF0aW9uQVBJIiwiZXhwaXJ5IjoxNzYwNDAwMDAwLCJpc1RoaXJkUGFydHkiOnRydWV9",
+      "A+FhYv9IW5+OMYH9DQz7Z0yNv1Ll8nGAOHqHI1PUvOCAkak0HO8sIPCpdyFSb2r9aMhnrkC8JZOAwQatT9JZVQQAAACAeyJvcmlnaW4iOiJjaHJvbWUtZXh0ZW5zaW9uOi8vZ2xrb2prYWJlbWJtbm1wcGxpZnBjYW5iY2Vjb2ZoZ2siLCJmZWF0dXJlIjoiQUlXcml0ZXJBUEkiLCJleHBpcnkiOjE3Njk0NzIwMDAsImlzVGhpcmRQYXJ0eSI6dHJ1ZX0="
+    ]
+  },
   "host_permissions": [
     "https://*.amazon.com/*",
     "https://*.amazon.co.uk/*",

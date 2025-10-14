@@ -131,3 +131,36 @@ input:focus, textarea:focus, select:focus {
 .card-lift {
   @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover;
 }
+
+/* ============================================================================
+   Z-INDEX SYSTEM - Professional Layering Hierarchy
+   ============================================================================
+   
+   Layer 0 (z-0):        Base content, default layer
+   Layer 1 (z-[1]):      Slightly elevated content (shadows, borders)
+   Layer 5 (z-[5]):      Badges, tags, labels (non-interactive)
+   Layer 10 (z-10):      Interactive elements (buttons, links, inputs)
+   Layer 20 (z-20):      Dropdowns, tooltips, popovers
+   Layer 30 (z-30):      Sticky headers, navigation
+   Layer 40 (z-40):      Modals, dialogs, overlays
+   Layer 50 (z-50):      Fixed action bars, bottom sheets
+   Layer 100 (z-[100]):  Toast notifications, alerts
+   
+   Rule: Interactive elements ALWAYS have higher z-index than decorative elements
+   ============================================================================ */
+
+/* Ensure all interactive elements are above decorative elements */
+button, a[href], input, select, textarea, [role="button"] {
+  position: relative;
+  z-index: 10;
+}
+
+/* Fixed/sticky elements get higher z-index */
+.sticky, .fixed {
+  z-index: 30;
+}
+
+/* Action bars and bottom sheets */
+.action-bar {
+  z-index: 50;
+}

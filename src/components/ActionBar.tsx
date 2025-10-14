@@ -10,7 +10,7 @@ interface ActionBarProps {
 
 export default function ActionBar({ bestDeal, onSave, onShare }: ActionBarProps) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 shadow-lg">
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-neutral-200 shadow-lg">
       <div className="p-4">
         {/* Best Deal CTA */}
         {bestDeal && (
@@ -18,7 +18,7 @@ export default function ActionBar({ bestDeal, onSave, onShare }: ActionBarProps)
             href={bestDeal.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block w-full mb-3 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold text-center shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+            className="relative z-10 block w-full mb-3 px-4 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold text-center shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
           >
             <div className="flex items-center justify-center gap-2 text-white">
               <ExternalLink className="w-5 h-5 text-white" />

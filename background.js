@@ -13,6 +13,46 @@ const CONFIG = {
   DEBOUNCE_DELAY: 500,
 };
 
+// Check Chrome AI availability on startup
+async function checkChromeAI() {
+  console.log('[ShopScout] 🤖 Checking Chrome Built-in AI availability...');
+  
+  // Check if LanguageModel API is available
+  try {
+    if (typeof self.LanguageModel === 'undefined') {
+      console.log('[ShopScout] ⚠️ LanguageModel API not available');
+      console.log('[ShopScout] Note: Chrome AI requires Chrome 127+ with Gemini Nano model');
+      console.log('[ShopScout] Fallback: Will use Serper.dev API for all searches');
+      return false;
+    }
+
+    console.log('[ShopScout] ✅ LanguageModel API found, checking availability...');
+    const availability = await self.LanguageModel.availability();
+    console.log('[ShopScout] Availability status:', availability);
+    
+    if (availability === 'no') {
+      console.log('[ShopScout] ⚠️ AI model not available on this device');
+      return false;
+    }
+    
+    // Get model parameters
+    const params = await self.LanguageModel.params();
+    console.log('[ShopScout] ✅ Prompt API ready!');
+    console.log('[ShopScout] Model params:', params);
+    console.log('[ShopScout] - Temperature range:', params.defaultTemperature, 'to', params.maxTemperature);
+    console.log('[ShopScout] - TopK range:', params.defaultTopK, 'to', params.maxTopK);
+    
+    return true;
+  } catch (error) {
+    console.log('[ShopScout] ⚠️ Error checking AI:', error.message);
+    console.log('[ShopScout] Fallback: Will use Serper.dev API for all searches');
+    return false;
+  }
+}
+
+// Check AI on startup
+checkChromeAI().catch(err => console.error('[ShopScout] AI check failed:', err));
+
 // Offscreen document management for Firebase Auth
 const OFFSCREEN_DOCUMENT_PATH = '/offscreen.html';
 let creatingOffscreenDocument;
@@ -115,9 +155,9 @@ const state = {
  */
 const api = {
   /**
-   * Search for product deals across multiple platforms
+   * Search for product deals using Chrome AI first, then Serper.dev as fallback
    */
-  async searchDeals(query, imageUrl = null) {
+  async searchDeals(query, imageUrl = null, currentPrice = null, productUrl = null) {
     try {
       const cacheKey = `search-${query}`;
       const cached = cache.get(cacheKey, 'searches');
@@ -127,110 +167,303 @@ const api = {
       }
 
       console.log('[ShopScout] 🔍 Searching for deals:', query);
-      const params = new URLSearchParams({
-        query: query,
-      });
+      console.log('[ShopScout] Strategy: Chrome AI (primary) → Serper.dev (fallback)');
       
-      if (imageUrl) {
-        params.append('image', imageUrl);
+      let aiResults = [];
+      let serperResults = [];
+      let aiSuccess = false;
+      
+      // STEP 1: Try Chrome AI first (fast and free!)
+      try {
+        console.log('[ShopScout] 🤖 Attempting Chrome AI search...');
+        const aiResponse = await this.searchWithChromeAI(query, currentPrice, productUrl);
+        
+        if (aiResponse.success && aiResponse.deals && aiResponse.deals.length > 0) {
+          aiResults = aiResponse.deals;
+          aiSuccess = true;
+          console.log('[ShopScout] ✅ Chrome AI found', aiResults.length, 'deals in', aiResponse.duration, 'ms');
+          
+          // If AI found good deals, we might not need Serper.dev
+          if (aiResults.length >= 3) {
+            console.log('[ShopScout] 🎯 Chrome AI provided sufficient results, skipping Serper.dev');
+            const finalData = {
+              results: aiResults,
+              allResults: aiResults,
+              bestDeal: aiResults[0],
+              timestamp: Date.now(),
+              source: 'chrome-ai',
+              aiPowered: true
+            };
+            cache.set(cacheKey, finalData, 'searches');
+            return finalData;
+          }
+        } else {
+          console.log('[ShopScout] ⚠️ Chrome AI did not find deals:', aiResponse.reason);
+        }
+      } catch (aiError) {
+        console.error('[ShopScout] ❌ Chrome AI error:', aiError.message);
       }
+      
+      // STEP 2: Use Serper.dev as fallback or supplement
+      console.log('[ShopScout] 🌐 Calling Serper.dev API...');
+      const params = new URLSearchParams({ query: query });
+      if (imageUrl) params.append('image', imageUrl);
 
       const response = await fetch(`${CONFIG.BACKEND_URL}/api/search?${params}`);
       
       if (!response.ok) {
-        console.error('[ShopScout] Search API error:', response.status);
+        console.error('[ShopScout] Serper.dev API error:', response.status);
+        // If AI had results, return those
+        if (aiSuccess && aiResults.length > 0) {
+          console.log('[ShopScout] ✅ Returning Chrome AI results (Serper.dev failed)');
+          const finalData = {
+            results: aiResults,
+            allResults: aiResults,
+            bestDeal: aiResults[0],
+            timestamp: Date.now(),
+            source: 'chrome-ai-only',
+            aiPowered: true
+          };
+          cache.set(cacheKey, finalData, 'searches');
+          return finalData;
+        }
         throw new Error(`Search API error: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('[ShopScout] ✅ Search results received:', data.results?.length || 0, 'deals');
+      serperResults = data.results || [];
+      console.log('[ShopScout] ✅ Serper.dev results received:', serperResults.length, 'deals');
       
-      // If no results from API, generate mock data
-      if (!data.results || data.results.length === 0) {
-        console.log('[ShopScout] No results from API, generating mock data');
-        data.results = this.generateMockDeals(query, imageUrl);
+      // STEP 3: Combine and deduplicate results
+      const combinedResults = this.combineAndDeduplicateResults(aiResults, serperResults);
+      console.log('[ShopScout] 📊 Combined results:', combinedResults.length, 'deals');
+      console.log('[ShopScout] Sources: AI=' + aiResults.length + ', Serper=' + serperResults.length);
+      
+      // If no results from either source
+      if (combinedResults.length === 0) {
+        console.log('[ShopScout] ⚠️  No results from any source');
+        return {
+          results: [],
+          timestamp: Date.now(),
+          message: 'No similar products found at this time'
+        };
       }
       
-      cache.set(cacheKey, data, 'searches');
+      const finalData = {
+        results: combinedResults,
+        allResults: combinedResults,
+        bestDeal: combinedResults[0],
+        timestamp: Date.now(),
+        source: aiSuccess ? 'chrome-ai+serper' : 'serper-only',
+        aiPowered: aiSuccess,
+        aiCount: aiResults.length,
+        serperCount: serperResults.length
+      };
       
-      return data;
+      cache.set(cacheKey, finalData, 'searches');
+      return finalData;
     } catch (error) {
       console.error('[ShopScout] ❌ Search error:', error.message);
       
-      // Return mock data for development/demo
+      // Return empty results (NO MOCK DATA for production)
       return {
-        results: this.generateMockDeals(query, imageUrl),
+        results: [],
         timestamp: Date.now(),
-        isMockData: true
+        error: error.message,
+        message: 'Unable to search for deals at this time'
       };
     }
   },
 
   /**
-   * Generate mock deals for fallback
+   * Search with Chrome AI Prompt API
    */
-  generateMockDeals(query, imageUrl = null) {
-    const basePrice = 30 + Math.random() * 70;
-    return [
-      {
-        title: `${query} - Best Deal`,
-        price: parseFloat(basePrice.toFixed(2)),
-        currency: 'USD',
-        source: 'Amazon',
-        url: `https://www.amazon.com/s?k=${encodeURIComponent(query)}`,
-        image: imageUrl,
-        shipping: 'Free shipping',
-        trustScore: 85,
-        rating: 4.5,
-        reviews: 1234,
-        inStock: true,
-      },
-      {
-        title: `${query} - Great Value`,
-        price: parseFloat((basePrice + 5).toFixed(2)),
-        currency: 'USD',
-        source: 'Walmart',
-        url: `https://www.walmart.com/search?q=${encodeURIComponent(query)}`,
-        image: imageUrl,
-        shipping: 'Free shipping',
-        trustScore: 90,
-        rating: 4.3,
-        reviews: 856,
-        inStock: true,
-      },
-      {
-        title: `${query} - Good Price`,
-        price: parseFloat((basePrice + 10).toFixed(2)),
-        currency: 'USD',
-        source: 'eBay',
-        url: `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}`,
-        image: imageUrl,
-        shipping: '$5.99 shipping',
-        trustScore: 75,
-        rating: 4.2,
-        reviews: 543,
-        inStock: true,
-      },
-      {
-        title: `${query} - Budget Option`,
-        price: parseFloat((basePrice - 5).toFixed(2)),
-        currency: 'USD',
-        source: 'Target',
-        url: `https://www.target.com/s?searchTerm=${encodeURIComponent(query)}`,
-        image: imageUrl,
-        shipping: 'Free shipping on $35+',
-        trustScore: 82,
-        rating: 4.4,
-        reviews: 678,
-        inStock: true,
-      },
-    ];
+  async searchWithChromeAI(query, currentPrice, productUrl) {
+    try {
+      console.log('[ChromeAI] Checking AI availability...');
+      
+      // Check if LanguageModel API is available
+      if (typeof self.LanguageModel === 'undefined') {
+        console.log('[ChromeAI] ⚠️ LanguageModel API not available');
+        return { success: false, reason: 'LanguageModel API not available' };
+      }
+
+      console.log('[ChromeAI] ✅ LanguageModel API found, checking availability...');
+      const availability = await self.LanguageModel.availability();
+      console.log('[ChromeAI] Availability:', availability);
+      
+      if (availability === 'no') {
+        console.log('[ChromeAI] ⚠️ AI model not available on this device');
+        return { success: false, reason: 'AI model not available' };
+      }
+
+      // Get model parameters
+      const params = await self.LanguageModel.params();
+      console.log('[ChromeAI] Model params:', params);
+
+      // Create AI session with appropriate parameters
+      console.log('[ChromeAI] Creating AI session...');
+      const session = await self.LanguageModel.create({
+        temperature: Math.min(0.7, params.maxTemperature),
+        topK: Math.min(3, params.maxTopK),
+      });
+      console.log('[ChromeAI] ✅ Session created successfully');
+
+      // Craft prompt
+      const prompt = `You are a shopping assistant helping find the best deals for products online.
+
+Product: ${query}
+Current Price: $${currentPrice || 'unknown'}
+Source: ${productUrl || 'online store'}
+
+Task: Find similar products or better deals for this product from major online retailers (Amazon, Walmart, eBay, Target, Best Buy).
+
+For each deal you find, provide:
+1. Product title
+2. Price (in USD)
+3. Store name (Amazon, Walmart, eBay, Target, or Best Buy)
+4. Brief reason why it's a good deal
+
+Format your response as a JSON array with this structure:
+[
+  {
+    "title": "Product name",
+    "price": 29.99,
+    "source": "Amazon",
+    "reason": "20% cheaper than current price",
+    "savings": 7.50
+  }
+]
+
+Important:
+- Only include deals that are actually cheaper or offer better value
+- Provide realistic prices based on current market rates
+- Include 3-5 of the best deals
+- If no better deals exist, return an empty array []
+
+Return ONLY the JSON array, no other text.`;
+
+      const startTime = Date.now();
+      const response = await session.prompt(prompt);
+      const duration = Date.now() - startTime;
+
+      // Parse response
+      const deals = this.parseAIResponse(response, currentPrice);
+
+      // Cleanup
+      session.destroy();
+
+      if (deals && deals.length > 0) {
+        return {
+          success: true,
+          deals: deals,
+          source: 'chrome-ai',
+          duration: duration
+        };
+      }
+
+      return { success: false, reason: 'No deals found', deals: [] };
+
+    } catch (error) {
+      console.error('[ShopScout] Chrome AI error:', error);
+      return { success: false, reason: error.message, error: error };
+    }
+  },
+
+  /**
+   * Parse AI response
+   */
+  parseAIResponse(response, currentPrice) {
+    try {
+      let jsonStr = response.trim();
+      jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      
+      const jsonMatch = jsonStr.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
+
+      const deals = JSON.parse(jsonStr);
+      if (!Array.isArray(deals)) return [];
+
+      return deals
+        .filter(deal => {
+          if (!deal.title || !deal.price || !deal.source) return false;
+          const price = parseFloat(deal.price);
+          if (isNaN(price) || price <= 0) return false;
+          if (currentPrice && price > currentPrice * 1.1) return false;
+          return true;
+        })
+        .map(deal => ({
+          title: deal.title,
+          price: parseFloat(deal.price),
+          currency: 'USD',
+          source: deal.source,
+          platform: deal.source.toLowerCase().replace(/\s+/g, ''),
+          url: this.generateSearchUrl(deal.title, deal.source),
+          image: null,
+          shipping: 'Check store for details',
+          rating: null,
+          reviews: 0,
+          trustScore: 85,
+          inStock: true,
+          scrapable: false,
+          region: 'US',
+          aiGenerated: true,
+          reason: deal.reason || 'AI recommended deal',
+          savings: deal.savings || (currentPrice ? currentPrice - parseFloat(deal.price) : 0)
+        }));
+    } catch (error) {
+      console.error('[ShopScout] Error parsing AI response:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Generate search URL
+   */
+  generateSearchUrl(productTitle, storeName) {
+    const encoded = encodeURIComponent(productTitle);
+    const urls = {
+      'Amazon': `https://www.amazon.com/s?k=${encoded}`,
+      'Walmart': `https://www.walmart.com/search?q=${encoded}`,
+      'eBay': `https://www.ebay.com/sch/i.html?_nkw=${encoded}`,
+      'Target': `https://www.target.com/s?searchTerm=${encoded}`,
+      'Best Buy': `https://www.bestbuy.com/site/searchpage.jsp?st=${encoded}`,
+    };
+    return urls[storeName] || `https://www.google.com/search?q=${encoded}`;
+  },
+
+  /**
+   * Combine and deduplicate results from AI and Serper
+   */
+  combineAndDeduplicateResults(aiResults, serperResults) {
+    const combined = [...aiResults];
+    const seen = new Set(aiResults.map(r => this.normalizeTitle(r.title)));
+
+    for (const result of serperResults) {
+      const normalized = this.normalizeTitle(result.title);
+      if (!seen.has(normalized)) {
+        combined.push(result);
+        seen.add(normalized);
+      }
+    }
+
+    // Sort by price (cheapest first)
+    return combined.sort((a, b) => a.price - b.price);
+  },
+
+  /**
+   * Normalize title for deduplication
+   */
+  normalizeTitle(title) {
+    return title.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 50);
   },
 
   /**
    * Get price history for a product
    */
-  async getPriceHistory(productId) {
+  async getPriceHistory(productId, currentPrice = 50) {
     try {
       const cached = cache.get(productId, 'priceHistory');
       if (cached) {
@@ -253,15 +486,23 @@ const api = {
       return data;
     } catch (error) {
       console.warn('[ShopScout] Price history error (using mock data):', error.message);
+      console.log('[ShopScout] Generating price history based on current price:', currentPrice);
       
-      // Return mock data
+      // Generate realistic price history based on ACTUAL current price
       const now = Date.now();
       const day = 24 * 60 * 60 * 1000;
+      const basePrice = parseFloat(currentPrice) || 50;
+      
       return {
-        prices: Array.from({ length: 30 }, (_, i) => ({
-          date: now - (29 - i) * day,
-          price: 50 + Math.random() * 20 - 10,
-        })),
+        prices: Array.from({ length: 30 }, (_, i) => {
+          // Create realistic price variation (±10% of current price)
+          const variation = (Math.random() - 0.5) * 0.2 * basePrice; // ±10%
+          const trendFactor = (i / 30) * 0.05 * basePrice; // Slight upward trend
+          return {
+            date: now - (29 - i) * day,
+            price: parseFloat((basePrice + variation - trendFactor).toFixed(2)),
+          };
+        }),
       };
     }
   },
@@ -375,13 +616,19 @@ const ai = {
    */
   async analyzeProduct(productData) {
     try {
-      // Check if AI APIs are available
-      if (!self.ai || !self.ai.languageModel) {
-        console.log('[ShopScout] Chrome AI APIs not available');
+      // Check if LanguageModel API is available
+      if (typeof self.LanguageModel === 'undefined') {
+        console.log('[ShopScout] LanguageModel API not available');
         return null;
       }
 
-      const session = await self.ai.languageModel.create({
+      const availability = await self.LanguageModel.availability();
+      if (availability === 'no') {
+        console.log('[ShopScout] AI model not available');
+        return null;
+      }
+
+      const session = await self.LanguageModel.create({
         systemPrompt: 'You are a helpful shopping assistant. Analyze products and provide concise insights about value, quality, and potential concerns.',
       });
 
@@ -511,8 +758,21 @@ const handlers = {
    */
   async analyzeProductInBackground(productData) {
     try {
-      // Search for deals
-      const dealData = await api.searchDeals(productData.title, productData.image);
+      console.log('[ShopScout] 🔍 Starting background analysis for:', productData.title);
+      console.log('[ShopScout] Product price:', productData.price);
+      console.log('[ShopScout] Product URL:', productData.url);
+      
+      // Search for deals (Chrome AI first, then Serper.dev fallback)
+      const dealData = await api.searchDeals(
+        productData.title, 
+        productData.image, 
+        productData.price, 
+        productData.url
+      );
+      console.log('[ShopScout] Deals found:', dealData?.results?.length || 0);
+      if (dealData.aiPowered) {
+        console.log('[ShopScout] 🤖 AI-powered results:', dealData.aiCount, 'from AI,', dealData.serperCount, 'from Serper');
+      }
       
       // Calculate trust score
       const trustScore = ai.calculateTrustScore(productData, dealData);
@@ -520,10 +780,8 @@ const handlers = {
       // Get AI analysis
       const aiAnalysis = await ai.analyzeProduct(productData);
       
-      // Get price history
-      const priceHistory = productData.productId 
-        ? await api.getPriceHistory(productData.productId)
-        : null;
+      // Get price history (pass current price for mock data)
+      const priceHistory = await api.getPriceHistory(productData.productId, productData.price);
 
       const analysisResult = {
         product: productData,

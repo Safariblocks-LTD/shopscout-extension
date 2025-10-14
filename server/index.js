@@ -107,11 +107,49 @@ app.get('/', (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    version: '2.0.0',
-    timestamp: new Date().toISOString()
-  });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Test Serper.dev API endpoint
+app.get('/api/test-serp', async (req, res) => {
+  try {
+    console.log('[Test] Testing Serper.dev API...');
+    console.log('[Test] API Key:', process.env.SERP_API_KEY ? 'SET' : 'NOT SET');
+    
+    const requestBody = {
+      q: 'usb cable',
+      num: 5,
+      gl: 'us',
+      hl: 'en',
+    };
+    
+    const response = await axios.post('https://google.serper.dev/shopping', requestBody, {
+      headers: {
+        'X-API-KEY': process.env.SERP_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+    
+    console.log('[Test] Serper.dev API Response Status:', response.status);
+    console.log('[Test] Shopping Results Count:', response.data.shopping?.length || 0);
+    
+    res.json({
+      success: true,
+      status: response.status,
+      resultsCount: response.data.shopping?.length || 0,
+      hasError: !!response.data.error,
+      error: response.data.error || null,
+      sampleResult: response.data.shopping?.[0] || null
+    });
+  } catch (error) {
+    console.error('[Test] Serper.dev API Error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      response: error.response?.data || null
+    });
+  }
 });
 
 /**
@@ -188,11 +226,19 @@ app.get('/api/search', async (req, res) => {
 
     // Check if SERP API key is configured
     if (!process.env.SERP_API_KEY || process.env.SERP_API_KEY === 'your_serpapi_key_here') {
-      console.log('[Search] ⚠️  SERP API key not configured, returning mock data');
-      return res.json(getMockSearchResults(query, image));
+      console.error('[Search] ❌ SERP API key not configured!');
+      return res.json({ 
+        results: [],
+        allResults: [],
+        bestDeal: null,
+        region: 'US',
+        platforms: [],
+        timestamp: Date.now(),
+        message: 'Price comparison temporarily unavailable - SERP API key not configured'
+      });
     }
 
-    console.log('[Search] ✅ Using SERP API with key:', process.env.SERP_API_KEY.substring(0, 10) + '...');
+    console.log('[Search] ✅ Using Serper.dev API with key:', process.env.SERP_API_KEY.substring(0, 10) + '...');
 
     // Get platforms for the user's region
     const regionPlatforms = Object.entries(SUPPORTED_PLATFORMS)
@@ -212,53 +258,121 @@ app.get('/api/search', async (req, res) => {
       try {
         console.log(`[Search] Searching on ${platform.name}...`);
         
-        const params = {
-          api_key: process.env.SERP_API_KEY,
-          engine: 'google_shopping',
-          q: `${query} site:${platform.domain}`,
-          num: 5,
-          gl: platform.country.toLowerCase(),
-        };
+        // Generate hierarchical search queries
+        const searchHierarchy = generateSearchHierarchy(query);
+        console.log(`[Search] ${platform.name} - Search hierarchy (${searchHierarchy.length} levels):`, JSON.stringify(searchHierarchy));
+        
+        let allResults = [];
+        let successfulQuery = null;
+        
+        // Try each query level until we get results
+        for (let i = 0; i < searchHierarchy.length; i++) {
+          const searchQuery = searchHierarchy[i];
+          console.log(`[Search] ${platform.name} - Level ${i + 1}/${searchHierarchy.length}: Trying "${searchQuery}"`);
+          
+          const requestBody = {
+            q: searchQuery,
+            num: 10,
+            gl: platform.country.toLowerCase(),
+            hl: 'en',
+          };
 
-        console.log(`[Search] SERP API request:`, { url: 'https://serpapi.com/search.json', query: params.q });
-        const response = await axios.get('https://serpapi.com/search.json', { 
-          params,
-          timeout: 10000 // 10 second timeout
-        });
-        
-        console.log(`[Search] SERP API response status:`, response.status);
-        console.log(`[Search] SERP API shopping_results count:`, response.data.shopping_results?.length || 0);
-        
-        if (!response.data.shopping_results || response.data.shopping_results.length === 0) {
-          console.log(`[Search] No shopping results from SERP API for ${platform.name}`);
-          // Return mock data for this platform
-          return generateMockResultsForPlatform(query, platform, platformKey, userRegion);
+          try {
+            console.log(`[Search] ${platform.name} - Making Serper.dev API request...`);
+            const response = await axios.post('https://google.serper.dev/shopping', requestBody, {
+              headers: {
+                'X-API-KEY': process.env.SERP_API_KEY,
+                'Content-Type': 'application/json'
+              },
+              timeout: 15000
+            });
+            
+            console.log(`[Search] ${platform.name} - Serper.dev API response received, status: ${response.status}`);
+            const resultCount = response.data.shopping?.length || 0;
+            console.log(`[Search] ${platform.name} - Level ${i + 1} response: ${resultCount} results`);
+            
+            if (response.data.error) {
+              console.error(`[Search] ${platform.name} - Serper.dev API Error:`, response.data.error);
+            }
+            
+            if (response.data.shopping && response.data.shopping.length > 0) {
+              allResults = response.data.shopping;
+              successfulQuery = searchQuery;
+              console.log(`[Search] ${platform.name} - ✅ Found ${resultCount} results with query: "${searchQuery}"`);
+              break; // Stop at first successful query
+            } else {
+              console.log(`[Search] ${platform.name} - No results at level ${i + 1}, trying next level...`);
+            }
+          } catch (levelError) {
+            console.error(`[Search] ${platform.name} - Level ${i + 1} failed:`, levelError.message);
+            if (levelError.response) {
+              console.error(`[Search] ${platform.name} - Error response:`, levelError.response.status, levelError.response.data);
+            }
+            // Continue to next level
+          }
         }
         
-        const results = (response.data.shopping_results || []).map(item => ({
-          title: item.title,
-          price: parseFloat(item.price?.replace(/[^0-9.]/g, '') || '0'),
-          currency: item.extracted_price?.currency || getCurrencyForRegion(userRegion),
-          source: platform.name,
-          platform: platformKey,
-          url: item.link || '#',
-          image: item.thumbnail,
-          shipping: item.delivery || 'Shipping info not available',
-          rating: item.rating || null,
-          reviews: item.reviews || 0,
-          trustScore: calculateTrustScore(item, platform),
-          inStock: item.tag !== 'Out of stock',
-          scrapable: platform.scrapable,
-          region: platform.region,
-        }));
+        if (allResults.length === 0) {
+          console.log(`[Search] ⚠️  No results found after trying all ${searchHierarchy.length} query levels`);
+          return [];
+        }
+        
+        console.log(`[Search] Using results from query: "${successfulQuery}"`);
+        console.log(`[Search] Processing ${allResults.length} shopping results`);
+        
+        const platformResults = allResults;
+        
+        const results = platformResults
+          .map(item => {
+            // Extract price from Serper.dev format
+            const priceStr = item.price?.replace(/[^0-9.]/g, '') || '0';
+            const price = parseFloat(priceStr);
+            
+            // Skip only if completely invalid
+            if (!item.title || !item.link || price <= 0) {
+              return null;
+            }
+            
+            // Detect source from URL
+            let detectedSource = platform.name;
+            const url = item.link.toLowerCase();
+            if (url.includes('amazon')) detectedSource = 'Amazon';
+            else if (url.includes('walmart')) detectedSource = 'Walmart';
+            else if (url.includes('ebay')) detectedSource = 'eBay';
+            else if (url.includes('target')) detectedSource = 'Target';
+            else if (url.includes('bestbuy')) detectedSource = 'Best Buy';
+            
+            return {
+              title: item.title,
+              price: price,
+              currency: getCurrencyForRegion(userRegion),
+              source: detectedSource,
+              platform: platformKey,
+              url: item.link,
+              image: item.imageUrl || item.thumbnail,
+              shipping: item.delivery || 'Shipping info not available',
+              rating: item.rating || null,
+              reviews: item.reviews || item.ratingCount || 0,
+              trustScore: calculateTrustScore(item, platform),
+              inStock: true,
+              scrapable: platform.scrapable,
+              region: platform.region,
+            };
+          })
+          .filter(item => item !== null); // Remove invalid items
 
-        console.log(`[Search] ✅ Found ${results.length} results on ${platform.name}`);
+        console.log(`[Search] ✅ Found ${results.length} valid results on ${platform.name}`);
         return results;
       } catch (error) {
         console.error(`[Search] ❌ Error searching ${platform.name}:`, error.message);
-        console.error(`[Search] Error details:`, error.response?.data || error.stack);
-        // Return mock data for this platform
-        return generateMockResultsForPlatform(query, platform, platformKey, userRegion);
+        if (error.response) {
+          console.error(`[Search] SERP API Error Response:`, JSON.stringify(error.response.data));
+          console.error(`[Search] Status:`, error.response.status);
+        } else {
+          console.error(`[Search] Error stack:`, error.stack);
+        }
+        // Return empty array - NO MOCK DATA for production
+        return [];
       }
     });
 
@@ -678,6 +792,101 @@ function getCurrencyForRegion(region) {
  * Calculate quality score (combines price, trust, rating, reviews)
  * Higher score = better deal
  */
+/**
+ * Generate hierarchical search queries with progressive relaxation
+ * Example: "ASUS ROG Gaming Laptop 15.6 inch" → 
+ *   1. "ASUS ROG Gaming Laptop 15.6 inch"
+ *   2. "ASUS Gaming Laptop"
+ *   3. "Gaming Laptop"
+ *   4. "Laptop"
+ */
+function generateSearchHierarchy(query) {
+  const queries = [];
+  
+  // Clean and normalize query
+  const normalized = query
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, ' ') // Remove special chars except hyphens
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  const words = normalized.split(' ');
+  
+  // Identify key components
+  const brands = ['apple', 'samsung', 'sony', 'lg', 'dell', 'hp', 'lenovo', 'asus', 'acer', 
+                  'microsoft', 'google', 'amazon', 'anker', 'logitech', 'razer', 'corsair',
+                  'nvidia', 'amd', 'intel', 'canon', 'nikon', 'gopro', 'bose', 'jbl'];
+  
+  const categories = ['laptop', 'phone', 'tablet', 'monitor', 'keyboard', 'mouse', 'headphones',
+                     'speaker', 'camera', 'watch', 'charger', 'cable', 'adapter', 'case',
+                     'screen', 'drive', 'router', 'printer', 'tv', 'console'];
+  
+  const modifiers = ['gaming', 'wireless', 'bluetooth', 'usb', 'portable', 'pro', 'plus',
+                    'mini', 'max', 'ultra', 'premium', 'professional'];
+  
+  // Level 1: Full query (refined)
+  queries.push(refineSearchQuery(query));
+  
+  // Level 2: Brand + Category + Primary Modifier
+  const brand = words.find(w => brands.includes(w));
+  const category = words.find(w => categories.includes(w));
+  const modifier = words.find(w => modifiers.includes(w));
+  
+  if (brand && category) {
+    if (modifier) {
+      queries.push(`${brand} ${modifier} ${category}`);
+    }
+    queries.push(`${brand} ${category}`);
+  }
+  
+  // Level 3: Category + Primary Modifier
+  if (category && modifier) {
+    queries.push(`${modifier} ${category}`);
+  }
+  
+  // Level 4: Category only
+  if (category) {
+    queries.push(category);
+  }
+  
+  // Remove duplicates while preserving order
+  return [...new Set(queries)];
+}
+
+/**
+ * Refine search query to extract key product identifiers
+ * Removes filler words and focuses on brand, model, key features
+ */
+function refineSearchQuery(query) {
+  // Remove common filler words
+  const fillerWords = [
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'with', 'from', 'by', 'about', 'as', 'into', 'like', 'through',
+    'after', 'over', 'between', 'out', 'against', 'during', 'without',
+    'before', 'under', 'around', 'among', 'of', 'is', 'are', 'was', 'were'
+  ];
+  
+  // Split into words
+  let words = query.toLowerCase().split(/\s+/);
+  
+  // Remove filler words but keep important ones
+  words = words.filter(word => {
+    // Keep if not a filler word
+    if (!fillerWords.includes(word)) return true;
+    return false;
+  });
+  
+  // Extract key identifiers
+  const refined = words.join(' ');
+  
+  // If query is too short after refinement, use original
+  if (refined.length < 10) {
+    return query;
+  }
+  
+  return refined;
+}
+
 function calculateQualityScore(result) {
   let score = 0;
 
