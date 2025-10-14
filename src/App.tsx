@@ -284,6 +284,8 @@ function App() {
             <ReviewSummary
               reviews={product.reviews}
               rating={product.rating}
+              aiSummary={analysis?.summaries?.product || analysis?.summaries?.tldr || null}
+              prosAndCons={analysis?.summaries?.prosAndCons || null}
             />
           )}
         </div>

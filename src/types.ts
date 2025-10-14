@@ -36,11 +36,19 @@ export interface PriceHistoryData {
   prices: PricePoint[];
 }
 
+export interface AISummaries {
+  product: string | null;
+  tldr: string | null;
+  deals: string | null;
+  prosAndCons: string | null;
+}
+
 export interface AnalysisData {
   product: ProductData;
   deals: DealData;
   trustScore: number;
   aiAnalysis: string | null;
+  summaries?: AISummaries;
   priceHistory: PriceHistoryData | null;
   timestamp: number;
 }

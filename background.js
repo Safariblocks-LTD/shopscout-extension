@@ -30,10 +30,13 @@ async function checkChromeAI() {
     const availability = await self.LanguageModel.availability();
     console.log('[ShopScout] Availability status:', availability);
     
-    if (availability === 'no') {
+    if (availability === 'no' || availability === 'unavailable') {
       console.log('[ShopScout] ⚠️ AI model not available on this device');
       return false;
     }
+    
+    // availability can be: 'readily', 'after-download', 'available', or 'no'
+    console.log('[ShopScout] ✅ AI model is available (status:', availability + ')');
     
     // Get model parameters
     const params = await self.LanguageModel.params();
@@ -192,7 +195,9 @@ const api = {
               bestDeal: aiResults[0],
               timestamp: Date.now(),
               source: 'chrome-ai',
-              aiPowered: true
+              aiPowered: true,
+              aiCount: aiResults.length,
+              serperCount: 0
             };
             cache.set(cacheKey, finalData, 'searches');
             return finalData;
@@ -249,12 +254,15 @@ const api = {
         };
       }
       
+      const bestDeal = combinedResults[0];
+      const allResults = combinedResults;
+      
       const finalData = {
-        results: combinedResults,
-        allResults: combinedResults,
-        bestDeal: combinedResults[0],
+        results: allResults,
+        allResults: allResults,
+        bestDeal: bestDeal,
         timestamp: Date.now(),
-        source: aiSuccess ? 'chrome-ai+serper' : 'serper-only',
+        source: aiSuccess ? 'hybrid' : 'serper',
         aiPowered: aiSuccess,
         aiCount: aiResults.length,
         serperCount: serperResults.length
@@ -292,66 +300,51 @@ const api = {
       const availability = await self.LanguageModel.availability();
       console.log('[ChromeAI] Availability:', availability);
       
-      if (availability === 'no') {
+      if (availability === 'no' || availability === 'unavailable') {
         console.log('[ChromeAI] ⚠️ AI model not available on this device');
         return { success: false, reason: 'AI model not available' };
       }
+      
+      console.log('[ChromeAI] ✅ AI model ready (status:', availability + ')');
 
       // Get model parameters
       const params = await self.LanguageModel.params();
       console.log('[ChromeAI] Model params:', params);
 
-      // Create AI session with appropriate parameters
+      // Create AI session with optimized parameters for speed
       console.log('[ChromeAI] Creating AI session...');
       const session = await self.LanguageModel.create({
-        temperature: Math.min(0.7, params.maxTemperature),
-        topK: Math.min(3, params.maxTopK),
+        temperature: 0.3,  // Lower = faster, more focused
+        topK: 1,           // Lower = faster, more deterministic
       });
       console.log('[ChromeAI] ✅ Session created successfully');
 
-      // Craft prompt
-      const prompt = `You are a shopping assistant helping find the best deals for products online.
-
-Product: ${query}
-Current Price: $${currentPrice || 'unknown'}
-Source: ${productUrl || 'online store'}
-
-Task: Find similar products or better deals for this product from major online retailers (Amazon, Walmart, eBay, Target, Best Buy).
-
-For each deal you find, provide:
-1. Product title
-2. Price (in USD)
-3. Store name (Amazon, Walmart, eBay, Target, or Best Buy)
-4. Brief reason why it's a good deal
-
-Format your response as a JSON array with this structure:
-[
-  {
-    "title": "Product name",
-    "price": 29.99,
-    "source": "Amazon",
-    "reason": "20% cheaper than current price",
-    "savings": 7.50
-  }
-]
-
-Important:
-- Only include deals that are actually cheaper or offer better value
-- Provide realistic prices based on current market rates
-- Include 3-5 of the best deals
-- If no better deals exist, return an empty array []
-
-Return ONLY the JSON array, no other text.`;
+      // Ultra-compact prompt for maximum speed
+      const prompt = `Product: ${query}\nPrice: $${currentPrice || '?'}\n\nFind 3 cheaper alternatives. JSON only:\n[{"title":"...","price":0,"source":"Amazon"}]`;
 
       const startTime = Date.now();
-      const response = await session.prompt(prompt);
+      console.log('[ChromeAI] 🚀 Sending prompt (optimized for speed)...');
+      
+      // Add timeout to prevent hanging (30 seconds max)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('AI response timeout (30s)')), 30000)
+      );
+      
+      const response = await Promise.race([
+        session.prompt(prompt),
+        timeoutPromise
+      ]);
+      
       const duration = Date.now() - startTime;
+      console.log('[ChromeAI] ⏱️ Response received in', duration, 'ms');
 
       // Parse response
       const deals = this.parseAIResponse(response, currentPrice);
 
       // Cleanup
       session.destroy();
+
+      console.log('[ChromeAI] 📦 Parsed', deals.length, 'deals from AI response');
 
       if (deals && deals.length > 0) {
         return {
@@ -362,6 +355,7 @@ Return ONLY the JSON array, no other text.`;
         };
       }
 
+      console.log('[ChromeAI] ⚠️ No valid deals parsed from response');
       return { success: false, reason: 'No deals found', deals: [] };
 
     } catch (error) {
@@ -623,7 +617,7 @@ const ai = {
       }
 
       const availability = await self.LanguageModel.availability();
-      if (availability === 'no') {
+      if (availability === 'no' || availability === 'unavailable') {
         console.log('[ShopScout] AI model not available');
         return null;
       }
@@ -651,27 +645,215 @@ Provide a brief analysis (2-3 sentences) about whether this is a good deal and a
   },
 
   /**
-   * Summarize reviews
+   * Summarize product information using Chrome Summarizer API
    */
-  async summarizeReviews(reviews) {
+  async summarizeProduct(productData, dealData) {
     try {
-      if (!self.ai || !self.ai.summarizer) {
+      // Check if Summarizer API is available
+      if (typeof self.Summarizer === 'undefined') {
         console.log('[ShopScout] Summarizer API not available');
         return null;
       }
 
-      const summarizer = await self.ai.summarizer.create({
+      const availability = await self.Summarizer.availability();
+      if (availability === 'no' || availability === 'unavailable') {
+        console.log('[ShopScout] Summarizer model not available');
+        return null;
+      }
+
+      console.log('[ShopScout] 📝 Generating product summary with AI...');
+
+      // Create comprehensive product context
+      const productContext = `
+Product: ${productData.title}
+Price: $${productData.price}
+Seller: ${productData.seller || 'Unknown'}
+Rating: ${productData.rating || 'No rating'} (${productData.reviews || '0'} reviews)
+Store: ${productData.site}
+
+Comparison Results:
+${dealData.results ? dealData.results.slice(0, 5).map((deal, i) => 
+  `${i + 1}. ${deal.title} - $${deal.price} at ${deal.source}`
+).join('\n') : 'No comparison data available'}
+
+Best Deal: ${dealData.bestDeal ? `$${dealData.bestDeal.price} at ${dealData.bestDeal.source}` : 'N/A'}
+Potential Savings: ${productData.price && dealData.bestDeal ? `$${(productData.price - dealData.bestDeal.price).toFixed(2)}` : 'N/A'}
+      `.trim();
+
+      // Create summarizer for key points
+      const summarizer = await self.Summarizer.create({
+        sharedContext: 'This is product comparison data from an online shopping assistant.',
+        type: 'key-points',
+        format: 'markdown',
+        length: 'medium',
+      });
+
+      const summary = await summarizer.summarize(productContext, {
+        context: 'Focus on price comparison, value assessment, and key product features.'
+      });
+
+      summarizer.destroy();
+      console.log('[ShopScout] ✅ Product summary generated');
+
+      return summary;
+    } catch (error) {
+      console.error('[ShopScout] Product summarization error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Generate TLDR summary for quick insights
+   */
+  async generateTLDR(productData, dealData) {
+    try {
+      if (typeof self.Summarizer === 'undefined') {
+        return null;
+      }
+
+      const availability = await self.Summarizer.availability();
+      if (availability === 'no' || availability === 'unavailable') {
+        return null;
+      }
+
+      console.log('[ShopScout] 📝 Generating TLDR summary...');
+
+      const context = `
+Product: ${productData.title}
+Current Price: $${productData.price}
+Rating: ${productData.rating || 'N/A'}
+Best Alternative: ${dealData.bestDeal ? `$${dealData.bestDeal.price} at ${dealData.bestDeal.source}` : 'None found'}
+Total Alternatives Found: ${dealData.results?.length || 0}
+      `.trim();
+
+      const summarizer = await self.Summarizer.create({
+        type: 'tldr',
+        format: 'plain-text',
+        length: 'short',
+      });
+
+      const tldr = await summarizer.summarize(context, {
+        context: 'Provide a one-sentence summary about whether this is a good deal.'
+      });
+
+      summarizer.destroy();
+      console.log('[ShopScout] ✅ TLDR generated');
+
+      return tldr;
+    } catch (error) {
+      console.error('[ShopScout] TLDR generation error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Summarize deal comparisons
+   */
+  async summarizeDeals(dealData, currentPrice) {
+    try {
+      if (typeof self.Summarizer === 'undefined') {
+        return null;
+      }
+
+      const availability = await self.Summarizer.availability();
+      if (availability === 'no' || availability === 'unavailable') {
+        return null;
+      }
+
+      if (!dealData.results || dealData.results.length === 0) {
+        return null;
+      }
+
+      console.log('[ShopScout] 📝 Summarizing deal comparisons...');
+
+      const dealsContext = `
+Current Product Price: $${currentPrice}
+
+Alternative Deals Found:
+${dealData.results.map((deal, i) => 
+  `${i + 1}. ${deal.title}
+   Price: $${deal.price}
+   Store: ${deal.source}
+   Savings: $${(currentPrice - deal.price).toFixed(2)}
+   ${deal.reason || ''}`
+).join('\n\n')}
+
+Total Deals: ${dealData.results.length}
+Best Price: $${dealData.bestDeal?.price || 'N/A'}
+Maximum Savings: $${dealData.bestDeal ? (currentPrice - dealData.bestDeal.price).toFixed(2) : '0.00'}
+      `.trim();
+
+      const summarizer = await self.Summarizer.create({
+        sharedContext: 'This is a price comparison for online shopping.',
         type: 'key-points',
         format: 'markdown',
         length: 'short',
       });
 
-      const summary = await summarizer.summarize(reviews);
+      const summary = await summarizer.summarize(dealsContext, {
+        context: 'Highlight the best deals and potential savings. Focus on value and trustworthiness.'
+      });
+
       summarizer.destroy();
+      console.log('[ShopScout] ✅ Deal summary generated');
 
       return summary;
     } catch (error) {
-      console.error('[ShopScout] Review summarization error:', error);
+      console.error('[ShopScout] Deal summarization error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Generate pros and cons from product data
+   */
+  async generateProsAndCons(productData, dealData) {
+    try {
+      if (typeof self.Summarizer === 'undefined') {
+        return null;
+      }
+
+      const availability = await self.Summarizer.availability();
+      if (availability === 'no' || availability === 'unavailable') {
+        return null;
+      }
+
+      console.log('[ShopScout] 📝 Generating pros and cons...');
+
+      const context = `
+Product Analysis:
+- Product: ${productData.title}
+- Price: $${productData.price}
+- Rating: ${productData.rating || 'No rating'}
+- Reviews: ${productData.reviews || 'No reviews'}
+- Seller: ${productData.seller || 'Unknown'}
+- Store: ${productData.site}
+
+Market Comparison:
+- Alternatives Found: ${dealData.results?.length || 0}
+- Best Alternative Price: ${dealData.bestDeal ? `$${dealData.bestDeal.price}` : 'N/A'}
+- Price Position: ${dealData.bestDeal && productData.price > dealData.bestDeal.price ? 'Higher than best alternative' : 'Competitive'}
+- AI-Powered Results: ${dealData.aiPowered ? 'Yes' : 'No'}
+
+Analyze this product purchase decision.
+      `.trim();
+
+      const summarizer = await self.Summarizer.create({
+        type: 'key-points',
+        format: 'markdown',
+        length: 'medium',
+      });
+
+      const analysis = await summarizer.summarize(context, {
+        context: 'List pros and cons of buying this product at this price. Be objective and helpful.'
+      });
+
+      summarizer.destroy();
+      console.log('[ShopScout] ✅ Pros and cons generated');
+
+      return analysis;
+    } catch (error) {
+      console.error('[ShopScout] Pros/cons generation error:', error);
       return null;
     }
   },
@@ -777,8 +959,17 @@ const handlers = {
       // Calculate trust score
       const trustScore = ai.calculateTrustScore(productData, dealData);
       
-      // Get AI analysis
+      // Get AI analysis using Prompt API
       const aiAnalysis = await ai.analyzeProduct(productData);
+      
+      // Generate AI summaries using Summarizer API
+      console.log('[ShopScout] 📝 Generating AI summaries...');
+      const [productSummary, tldrSummary, dealsSummary, prosAndCons] = await Promise.all([
+        ai.summarizeProduct(productData, dealData),
+        ai.generateTLDR(productData, dealData),
+        ai.summarizeDeals(dealData, productData.price),
+        ai.generateProsAndCons(productData, dealData)
+      ]);
       
       // Get price history (pass current price for mock data)
       const priceHistory = await api.getPriceHistory(productData.productId, productData.price);
@@ -788,9 +979,18 @@ const handlers = {
         deals: dealData,
         trustScore,
         aiAnalysis,
+        // AI-generated summaries
+        summaries: {
+          product: productSummary,
+          tldr: tldrSummary,
+          deals: dealsSummary,
+          prosAndCons: prosAndCons
+        },
         priceHistory,
         timestamp: Date.now(),
       };
+
+      console.log('[ShopScout] ✅ Analysis complete with AI summaries');
 
       // Cache complete analysis
       cache.set(`analysis-${productData.url}`, analysisResult);
