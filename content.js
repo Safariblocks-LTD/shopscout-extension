@@ -42,8 +42,11 @@ const SCRAPER_CONFIGS = {
         '[data-hook="total-review-count"]'
       ],
       rating: [
+        'span[data-hook="rating-out-of-text"]',
         '.a-icon-star .a-icon-alt',
-        '[data-hook="rating-out-of-text"]'
+        'i.a-icon-star span.a-icon-alt',
+        '#acrPopover',
+        '.a-icon-alt'
       ]
     }
   },
@@ -398,10 +401,23 @@ class ProductScraper {
       rating: null
     };
 
-    // Extract title
-    const titleElement = utils.querySelector(this.config.selectors.title);
-    data.title = utils.extractText(titleElement);
-    console.log('[ShopScout] Title found:', data.title, 'Element:', titleElement);
+    // Extract title - Try multiple selectors
+    console.log('[ShopScout] 📝 Attempting to extract title...');
+    for (const selector of this.config.selectors.title) {
+      const titleElement = document.querySelector(selector);
+      if (titleElement) {
+        data.title = utils.extractText(titleElement);
+        if (data.title) {
+          console.log('[ShopScout] ✅ Title found:', data.title);
+          console.log('[ShopScout] Title selector:', selector);
+          break;
+        }
+      }
+    }
+    
+    if (!data.title) {
+      console.log('[ShopScout] ⚠️ Could not extract title from any selector');
+    }
 
     // Extract price
     const priceElement = utils.querySelector(this.config.selectors.price);
@@ -434,11 +450,23 @@ class ProductScraper {
       console.log('[ShopScout] Reviews found:', data.reviews);
     }
 
-    // Extract rating
+    // Extract rating - ACCURATE extraction
     if (this.config.selectors.rating) {
       const ratingElement = utils.querySelector(this.config.selectors.rating);
-      data.rating = utils.extractText(ratingElement);
-      console.log('[ShopScout] Rating found:', data.rating);
+      const ratingText = utils.extractText(ratingElement);
+      console.log('[ShopScout] Rating raw text:', ratingText);
+      
+      if (ratingText) {
+        // Extract numeric rating (e.g., "4.1 out of 5 stars" -> 4.1)
+        const match = ratingText.match(/(\d+\.?\d*)\s*(out of|\/)?/i);
+        if (match) {
+          data.rating = parseFloat(match[1]);
+          console.log('[ShopScout] ✅ Rating parsed:', data.rating);
+        } else {
+          data.rating = ratingText;
+          console.log('[ShopScout] ⚠️ Rating could not be parsed, using raw:', data.rating);
+        }
+      }
     }
 
     // Validate essential data
@@ -513,26 +541,29 @@ async function initialize() {
 
     console.log('[ShopScout] ✅ Product page detected! Starting scrape...');
     
-    // Scrape product data
-    const productData = await scraper.scrape();
-    
-    if (productData) {
-      lastScrapedUrl = productData.url;
-      
-      console.log('[ShopScout] 📤 Sending product data to background script...');
-      
-      // Send to background script
-      chrome.runtime.sendMessage({
-        type: 'PRODUCT_DETECTED',
-        data: productData
-      }).then(() => {
-        console.log('[ShopScout] ✅ Product data sent successfully');
-      }).catch(err => {
-        console.error('[ShopScout] ❌ Error sending message:', err);
-      });
-    } else {
-      console.warn('[ShopScout] ⚠️ Scraping returned no data');
+    // Debounce function to prevent excessive scraping (optimized for speed)
+    let scrapeTimeout;
+    function debouncedScrape() {
+      clearTimeout(scrapeTimeout);
+      scrapeTimeout = setTimeout(() => {
+        console.log('[ShopScout] ⚡ Fast product scrape initiated...');
+        const startTime = performance.now();
+        const productData = scraper.scrape();
+        const duration = performance.now() - startTime;
+        
+        if (productData) {
+          console.log(`[ShopScout] ✅ Product scraped in ${duration.toFixed(0)}ms`);
+          chrome.runtime.sendMessage({
+            type: 'PRODUCT_DETECTED',
+            data: productData
+          });
+        } else {
+          console.log('[ShopScout] ⚠️ Could not scrape product data');
+        }
+      }, 300); // Reduced from 1000ms to 300ms for faster response
     }
+
+    debouncedScrape();
   } catch (error) {
     console.error('[ShopScout] ❌ Initialization error:', error);
   } finally {

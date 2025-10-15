@@ -2,10 +2,19 @@ import { ShoppingBag, Sparkles, TrendingDown, Shield, Star, ArrowRight, Bird, Sc
 
 export default function EmptyState() {
   const handleScanProduct = () => {
+    console.log('[EmptyState] Scan button clicked');
+    
     // Send message to background script to scan current page
     chrome.runtime.sendMessage({ type: 'MANUAL_SCAN' }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('[EmptyState] Error:', chrome.runtime.lastError.message);
+        return;
+      }
+      
       if (response?.success) {
-        console.log('[EmptyState] Manual scan triggered successfully');
+        console.log('[EmptyState] ✅ Manual scan triggered successfully');
+      } else {
+        console.error('[EmptyState] ❌ Manual scan failed:', response?.error);
       }
     });
   };

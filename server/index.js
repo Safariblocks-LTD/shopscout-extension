@@ -405,6 +405,7 @@ app.get('/api/search', async (req, res) => {
     const bestDeal = topDeals.length > 0 ? topDeals[0] : null;
 
     res.json({
+      success: true, // CRITICAL: Extension expects this field
       results: topDeals, // Return top 2-5 best deals
       allResults: combinedResults.slice(0, 20), // All results for reference
       bestDeal,

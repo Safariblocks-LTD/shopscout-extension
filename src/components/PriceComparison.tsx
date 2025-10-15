@@ -157,8 +157,10 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
           <div className="inline-flex items-center justify-center w-16 h-16 bg-neutral-100 rounded-full mb-4">
             <Package className="w-8 h-8 text-neutral-400" />
           </div>
-          <p className="text-sm font-body text-neutral-600 mb-1">Searching for deals...</p>
-          <p className="text-xs font-body text-neutral-400">Finding the best prices across stores</p>
+          <p className="text-sm font-body text-neutral-600 mb-1">No deals found</p>
+          <p className="text-xs font-body text-neutral-400">
+            We couldn't find similar products at other stores right now
+          </p>
         </div>
       )}
     </div>

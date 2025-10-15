@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Bird, Sparkles, LogOut, User as UserIcon, Loader2 } from 'lucide-react';
-import ProductSnapshot from './components/ProductSnapshot';
+import { Bird, Sparkles, LogOut, User as UserIcon, Loader2, RefreshCw } from 'lucide-react';
 import PriceHistory from './components/PriceHistory';
-import ReviewSummary from './components/ReviewSummary';
 import TrustBadge from './components/TrustBadge';
 import ActionBar from './components/ActionBar';
 import EmptyState from './components/EmptyState';
 import AuthPrompt from './components/AuthPrompt';
 import PriceComparison from './components/PriceComparison';
+import AIAssistant from './components/AIAssistant';
 import { ProductData, AnalysisData } from './types';
 
 const LoadingState = () => (
@@ -35,7 +34,7 @@ function App() {
         console.log('[ShopScout Sidebar] Auth check result:', result);
         
         if (result.authenticated && result.userId) {
-          console.log('[ShopScout Sidebar] ✅ User authenticated:', result.userEmail);
+          console.log('[ShopScout Sidebar] User authenticated:', result.userEmail);
           setOnboarded(true);
           setNickname(result.displayName || result.userEmail?.split('@')[0] || 'User');
           setUserEmail(result.userEmail || '');
@@ -83,14 +82,29 @@ function App() {
 
     // Listen for product updates
     const messageListener = (message: any) => {
+      console.log('[ShopScout UI] Message received:', message.type, message);
+      
       if (message.type === 'PRODUCT_UPDATED') {
+        console.log('[ShopScout UI] Setting product:', message.data);
         setProduct(message.data);
         setAnalyzing(true);
+        setLoading(false); // Stop loading when product is set
       } else if (message.type === 'ANALYSIS_COMPLETE') {
+        console.log('[ShopScout UI] Setting analysis:', message.data);
         setAnalysis(message.data);
         setAnalyzing(false);
         setLoading(false);
+      } else if (message.type === 'SUMMARY_COMPLETE') {
+        // Update analysis with product summary when it arrives
+        if (message.data?.summary) {
+          setAnalysis(prev => {
+            if (!prev) return prev;
+            return { ...prev, summary: message.data.summary };
+          });
+          console.log('[ShopScout UI] Product summary received');
+        }
       } else if (message.type === 'ANALYSIS_ERROR') {
+        console.error('[ShopScout UI] Analysis error:', message.data);
         setAnalyzing(false);
         setLoading(false);
       }
@@ -113,18 +127,6 @@ function App() {
           setAnalyzing(false);
         }
         setLoading(false);
-      }
-    );
-  };
-
-  const handleRefresh = () => {
-    setAnalyzing(true);
-    chrome.runtime.sendMessage(
-      { type: 'SIDEPANEL_REQUEST', action: 'REFRESH_ANALYSIS' },
-      (response) => {
-        if (!response?.success) {
-          setAnalyzing(false);
-        }
       }
     );
   };
@@ -182,8 +184,27 @@ function App() {
     return <AuthPrompt />;
   }
 
+  // Show empty state if no product
   if (!product) {
     return <EmptyState />;
+  }
+
+  // Safety check for product data
+  if (!product.title || !product.price) {
+    console.error('[ShopScout UI] Invalid product data:', product);
+    return (
+      <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-4">
+        <div className="text-center">
+          <p className="text-neutral-600 font-body mb-4">Invalid product data received</p>
+          <button
+            onClick={() => setProduct(null)}
+            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const bestDeal = analysis?.deals?.results?.[0];
@@ -245,19 +266,62 @@ function App() {
       {/* Main Content */}
       <main className="pb-20">
         <div className="p-4 space-y-4">
-          {/* Product Snapshot */}
-          <ProductSnapshot
-            product={product}
-            trustScore={analysis?.trustScore}
-            onRefresh={handleRefresh}
-          />
+          
+          {/* Product Title Bar with Refresh */}
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-base font-heading font-bold text-neutral-700">Current Product</h2>
+            <button
+              onClick={() => {
+                console.log('[ShopScout UI] Refresh button clicked');
+                chrome.runtime.sendMessage({ type: 'SIDEPANEL_REQUEST', action: 'REFRESH_ANALYSIS' }, (response) => {
+                  if (response?.success) {
+                    console.log('[ShopScout UI] Analysis refresh triggered');
+                    setAnalyzing(true);
+                  }
+                });
+              }}
+              className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+              title="Refresh analysis"
+            >
+              <RefreshCw className={`w-4 h-4 text-neutral-600 ${analyzing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {/* Product Header */}
+          <div className="card">
+            <div className="flex gap-4">
+              {product.image && (
+                <img
+                  src={product.image}
+                  alt={product.title || 'Product'}
+                  className="w-24 h-24 object-cover rounded-xl border-2 border-neutral-100"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              )}
+              <div className="flex-1">
+                <h2 className="text-xl font-heading font-bold text-neutral-900 mb-2">
+                  {product.title || 'Product'}
+                </h2>
+                <div className="text-3xl font-heading font-bold text-primary">
+                  ${typeof product.price === 'number' ? product.price.toFixed(2) : '0.00'}
+                </div>
+                {product.rating && (
+                  <div className="text-sm text-neutral-600 mt-1">
+                    ⭐ {product.rating}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Trust Badge */}
           {analysis?.trustScore !== undefined && (
             <TrustBadge
               score={analysis.trustScore}
               product={product}
-              aiAnalysis={analysis.aiAnalysis}
+              aiAnalysis={null}
             />
           )}
 
@@ -270,8 +334,8 @@ function App() {
             />
           )}
 
-          {/* Price History */}
-          {analysis?.priceHistory && (
+          {/* Price History - Only show if data exists */}
+          {analysis?.priceHistory && analysis.priceHistory.prices && analysis.priceHistory.prices.length > 0 && (
             <PriceHistory
               data={analysis.priceHistory}
               currentPrice={product.price}
@@ -279,15 +343,6 @@ function App() {
             />
           )}
 
-          {/* Review Summary */}
-          {product.reviews && (
-            <ReviewSummary
-              reviews={product.reviews}
-              rating={product.rating}
-              aiSummary={analysis?.summaries?.product || analysis?.summaries?.tldr || null}
-              prosAndCons={analysis?.summaries?.prosAndCons || null}
-            />
-          )}
         </div>
       </main>
 
@@ -305,6 +360,17 @@ function App() {
           }
         }}
       />
+
+      {/* AI Assistant (Floating Chat) */}
+      {product && (
+        <AIAssistant
+          productTitle={product.title}
+          productPrice={product.price}
+          productRating={product.rating}
+          bestDealPrice={bestDeal?.price}
+          dealsCount={analysis?.deals?.results?.length}
+        />
+      )}
     </div>
   );
 }
