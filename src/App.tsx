@@ -6,6 +6,7 @@ import ActionBar from './components/ActionBar';
 import EmptyState from './components/EmptyState';
 import AuthPrompt from './components/AuthPrompt';
 import PriceComparison from './components/PriceComparison';
+import ReviewSummary from './components/ReviewSummary';
 import AIAssistant from './components/AIAssistant';
 import { ProductData, AnalysisData } from './types';
 
@@ -94,12 +95,29 @@ function App() {
         setAnalysis(message.data);
         setAnalyzing(false);
         setLoading(false);
+      } else if (message.type === 'SUMMARY_STREAMING') {
+        // Handle streaming AI summary chunks in real-time (Phase 3)
+        if (message.data?.chunk) {
+          setAnalysis(prev => {
+            if (!prev) return prev;
+            return { 
+              ...prev, 
+              summary: message.data.chunk,
+              summaryComplete: message.data.complete || false
+            };
+          });
+          if (message.data.complete) {
+            console.log('[ShopScout UI] ✅ Streaming summary complete');
+          } else {
+            console.log('[ShopScout UI] 📝 Streaming chunk received');
+          }
+        }
       } else if (message.type === 'SUMMARY_COMPLETE') {
-        // Update analysis with product summary when it arrives
+        // Update analysis with product summary when it arrives (legacy support)
         if (message.data?.summary) {
           setAnalysis(prev => {
             if (!prev) return prev;
-            return { ...prev, summary: message.data.summary };
+            return { ...prev, summary: message.data.summary, summaryComplete: true };
           });
           console.log('[ShopScout UI] Product summary received');
         }
@@ -315,6 +333,16 @@ function App() {
               </div>
             </div>
           </div>
+
+          {/* AI Summary - Streaming from Gemini Nano */}
+          {analysis?.summary && (
+            <ReviewSummary
+              reviews={product.reviews || '0 reviews'}
+              rating={product.rating}
+              aiSummary={analysis.summary}
+              summaryComplete={analysis.summaryComplete !== false}
+            />
+          )}
 
           {/* Trust Badge */}
           {analysis?.trustScore !== undefined && (

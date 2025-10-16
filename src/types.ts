@@ -36,11 +36,21 @@ export interface PriceHistoryData {
   prices: PricePoint[];
 }
 
+export interface TrustBreakdown {
+  sellerReputation: number;
+  ratingQuality: number;
+  reviewCount: number;
+  pricePositioning: number;
+  platformReliability: number;
+}
+
 export interface AnalysisData {
   product: ProductData;
   deals: DealData;
   trustScore: number;
-  summary?: string | null; // Summarizer API generated summary
+  trustBreakdown?: TrustBreakdown;
+  summary?: string | null; // Summarizer API generated summary (streaming)
+  summaryComplete?: boolean; // True when streaming is complete
   priceHistory: PriceHistoryData | null;
   timestamp: number;
 }

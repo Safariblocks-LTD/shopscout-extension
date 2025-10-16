@@ -120,11 +120,11 @@ export default function AIAssistant({
 
   return (
     <>
-      {/* Floating Button */}
+      {/* Floating Button - Adjusted for sidebar */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 group"
+          className="fixed bottom-4 right-4 z-50 group"
           aria-label="Open AI Assistant"
         >
           <div className="relative">
@@ -144,9 +144,9 @@ export default function AIAssistant({
         </button>
       )}
 
-      {/* Chat Panel */}
+      {/* Chat Panel - Adjusted for sidebar */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-96 h-[600px] bg-white rounded-3xl shadow-2xl border-2 border-primary/20 flex flex-col overflow-hidden animate-scale-in">
+        <div className="fixed bottom-4 right-4 left-4 z-50 max-w-full h-[500px] bg-white rounded-3xl shadow-2xl border-2 border-primary/20 flex flex-col overflow-hidden animate-scale-in">
           {/* Header */}
           <div className="bg-gradient-to-r from-primary to-accent p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">

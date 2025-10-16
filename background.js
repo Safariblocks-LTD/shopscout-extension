@@ -228,9 +228,29 @@ const api = {
         
         // Check if we have results
         if (data && data.success && data.results && Array.isArray(data.results) && data.results.length > 0) {
-          const serperResults = data.results;
+          const serperResults = data.results.map(result => {
+            // Ensure we use the actual product URL from Serper.dev
+            console.log('[ShopScout] Processing Serper result:', {
+              title: result.title?.substring(0, 50) + '...',
+              price: result.price,
+              source: result.source,
+              url: result.url ? 'HAS_URL' : 'NO_URL'
+            });
+            
+            return {
+              ...result,
+              // Use the actual product URL from Serper.dev API
+              url: result.url || result.link || this.generateSearchUrl(result.title, result.source),
+              // Ensure consistent formatting
+              source: result.source || this.extractStoreFromUrl(result.url || result.link),
+              platform: (result.source || this.extractStoreFromUrl(result.url || result.link))?.toLowerCase().replace(/\s+/g, ''),
+              aiGenerated: false,
+              scrapable: true // Serper results are real product pages
+            };
+          });
+          
           console.log('[ShopScout] ✅ Serper.dev found', serperResults.length, 'deals');
-          console.log('[ShopScout] First deal:', JSON.stringify(serperResults[0]));
+          console.log('[ShopScout] First deal processed:', JSON.stringify(serperResults[0]));
           
           const finalData = {
             results: serperResults,
@@ -334,16 +354,18 @@ const api = {
       });
       console.log('[ChromeAI] ✅ Session created successfully');
 
-      // Improved prompt for accuracy
+      // Improved prompt for accuracy with better URL instructions
       const prompt = `Find 3-5 real cheaper alternatives for: ${query} (current price: $${currentPrice || 'unknown'})
 
 IMPORTANT:
-- Each deal MUST be from a DIFFERENT store (Amazon, Walmart, eBay, Target, or Best Buy)
+- Each deal MUST be from a DIFFERENT store (Amazon, Walmart, eBay, Target, Best Buy, Etsy)
 - Prices must be realistic and LOWER than current price
+- Include ACTUAL product page URLs when possible, not search URLs
 - Return ONLY valid JSON array:
 
-[{"title":"exact product name","price":99.99,"source":"Walmart","url":"https://walmart.com/product-page"}]
+[{"title":"exact product name","price":99.99,"source":"Amazon","url":"https://amazon.com/dp/B123456789"}]
 
+If you don't know the exact URL, omit the url field entirely.
 No other text. JSON only.`;
 
       const startTime = Date.now();
@@ -425,14 +447,22 @@ No other text. JSON only.`;
           return true;
         })
         .map(deal => {
-          // Use AI-provided URL if available, otherwise generate search URL
-          const dealUrl = deal.url || this.generateSearchUrl(deal.title, deal.source);
+          // Prefer AI-provided URL, but only use search URL as last resort
+          let dealUrl = deal.url;
+          let isActualProductPage = !!deal.url;
+          
+          if (!dealUrl) {
+            // Only generate search URL if no actual URL provided
+            dealUrl = this.generateSearchUrl(deal.title, deal.source);
+            isActualProductPage = false;
+          }
           
           console.log('[ChromeAI] Processing deal:', {
             title: deal.title,
             price: deal.price,
             source: deal.source,
-            url: dealUrl
+            url: dealUrl,
+            isActualProductPage
           });
           
           return {
@@ -446,11 +476,12 @@ No other text. JSON only.`;
             shipping: 'Check store for details',
             rating: null,
             reviews: 0,
-            trustScore: 85,
+            trustScore: isActualProductPage ? 90 : 75, // Higher trust for actual product pages
             inStock: true,
-            scrapable: false,
+            scrapable: isActualProductPage, // Only actual product pages are scrapable
             region: 'US',
             aiGenerated: true,
+            isActualProductPage,
             reason: deal.reason || 'AI recommended deal',
             savings: deal.savings || (currentPrice ? currentPrice - parseFloat(deal.price) : 0)
           };
@@ -462,7 +493,39 @@ No other text. JSON only.`;
   },
 
   /**
-   * Generate search URL
+   * Extract store name from URL
+   */
+  extractStoreFromUrl(url) {
+    if (!url) return 'Unknown';
+    
+    const hostname = new URL(url).hostname.toLowerCase();
+    
+    if (hostname.includes('amazon')) return 'Amazon';
+    if (hostname.includes('walmart')) return 'Walmart';
+    if (hostname.includes('ebay')) return 'eBay';
+    if (hostname.includes('target')) return 'Target';
+    if (hostname.includes('bestbuy')) return 'Best Buy';
+    if (hostname.includes('etsy')) return 'Etsy';
+    if (hostname.includes('shopify')) return 'Shopify';
+    if (hostname.includes('aliexpress')) return 'AliExpress';
+    if (hostname.includes('alibaba')) return 'Alibaba';
+    if (hostname.includes('overstock')) return 'Overstock';
+    if (hostname.includes('wayfair')) return 'Wayfair';
+    if (hostname.includes('homedepot')) return 'Home Depot';
+    if (hostname.includes('lowes')) return 'Lowe\'s';
+    if (hostname.includes('costco')) return 'Costco';
+    if (hostname.includes('samsclub')) return 'Sam\'s Club';
+    if (hostname.includes('newegg')) return 'Newegg';
+    if (hostname.includes('bhphotovideo')) return 'B&H';
+    if (hostname.includes('adorama')) return 'Adorama';
+    
+    // Extract domain name as fallback
+    const domain = hostname.replace('www.', '').split('.')[0];
+    return domain.charAt(0).toUpperCase() + domain.slice(1);
+  },
+
+  /**
+   * Generate search URL (fallback only)
    */
   generateSearchUrl(productTitle, storeName) {
     const encoded = encodeURIComponent(productTitle);
@@ -472,6 +535,7 @@ No other text. JSON only.`;
       'eBay': `https://www.ebay.com/sch/i.html?_nkw=${encoded}`,
       'Target': `https://www.target.com/s?searchTerm=${encoded}`,
       'Best Buy': `https://www.bestbuy.com/site/searchpage.jsp?st=${encoded}`,
+      'Etsy': `https://www.etsy.com/search?q=${encoded}`,
     };
     return urls[storeName] || `https://www.google.com/search?q=${encoded}`;
   },
@@ -686,11 +750,13 @@ Provide a brief analysis (2-3 sentences) about whether this is a good deal and a
   },
 
   /**
-   * Summarize product information using Chrome Summarizer API
+   * Summarize product information using Chrome Summarizer API (MULTIMODAL)
+   * Supports both text and image input for comprehensive analysis
+   * @param {Function} onChunk - Callback for streaming chunks to UI
    */
-  async summarizeProduct(productData, dealData) {
+  async summarizeProduct(productData, dealData, onChunk = null) {
     try {
-      console.log('[ShopScout] Checking Summarizer API...');
+      console.log('[ShopScout] 🤖 Checking Summarizer API (Multimodal)...');
       console.log('[ShopScout] self.ai exists:', typeof self.ai !== 'undefined');
       console.log('[ShopScout] self.ai.summarizer exists:', typeof self.ai?.summarizer !== 'undefined');
       
@@ -715,7 +781,7 @@ Provide a brief analysis (2-3 sentences) about whether this is a good deal and a
         return null;
       }
 
-      console.log('[ShopScout] 📝 Generating product summary with AI (streaming)...');
+      console.log('[ShopScout] 📝 Generating multimodal product summary with AI (streaming)...');
       const startTime = Date.now();
 
       // Build comprehensive product context for summarization
@@ -727,6 +793,7 @@ Rating: ${productData.rating || 'No rating'}
 Reviews: ${productData.reviews || 'No reviews'}
 Seller: ${productData.seller || 'Unknown'}
 Store: ${productData.site}
+${productData.image ? `Product Image: ${productData.image}` : ''}
 
 Price Comparison:
 ${dealData.results && dealData.results.length > 0 ? 
@@ -741,88 +808,195 @@ ${dealData.bestDeal ? `Best Deal: $${dealData.bestDeal.price} at ${dealData.best
 Provide a helpful summary for a shopper considering this product.
       `.trim();
 
-      // Create summarizer with options (following official docs)
+      // Create summarizer with options (following official Chrome AI docs)
       const summarizer = await self.ai.summarizer.create({
         type: 'key-points',
         format: 'plain-text',
         length: 'medium',
-        sharedContext: 'This is product information from an online shopping comparison tool.'
+        sharedContext: productData.image ? `Product image URL: ${productData.image}` : undefined
       });
 
-      // Use streaming for faster first token (following official docs pattern)
-      const stream = await summarizer.summarizeStreaming(productContext);
+      // MULTIMODAL: Prepare input with both text and image
+      let inputContent = productContext;
+      
+      // If image is available, fetch and convert to blob for multimodal input
+      if (productData.image) {
+        try {
+          console.log('[ShopScout] 🖼️ Fetching product image for multimodal analysis...');
+          const imageResponse = await fetch(productData.image);
+          if (imageResponse.ok) {
+            const imageBlob = await imageResponse.blob();
+            console.log('[ShopScout] ✅ Image fetched successfully:', imageBlob.type, imageBlob.size, 'bytes');
+            
+            // Create multimodal input (text + image)
+            // Note: Chrome AI Summarizer API supports image input via Blob
+            inputContent = {
+              text: productContext,
+              image: imageBlob
+            };
+          } else {
+            console.log('[ShopScout] ⚠️ Failed to fetch image, using text-only mode');
+          }
+        } catch (imageError) {
+          console.log('[ShopScout] ⚠️ Image fetch error, using text-only mode:', imageError.message);
+        }
+      }
+
+      // Use streaming for faster first token (official docs pattern)
+      // Reference: https://developer.chrome.com/docs/ai/summarizer-api
+      console.log('[ShopScout] 🚀 Starting streaming summarization...');
+      const stream = summarizer.summarizeStreaming(inputContent, {
+        context: 'This is product information from an online shopping comparison tool. Analyze both the text and image (if provided) to give comprehensive insights.'
+      });
+      
       let summary = '';
       let firstTokenTime = null;
+      let chunkCount = 0;
       
       for await (const chunk of stream) {
+        chunkCount++;
         if (!firstTokenTime) {
           firstTokenTime = Date.now() - startTime;
           console.log('[ShopScout] ⚡ First token received in', firstTokenTime, 'ms');
         }
         summary = chunk; // Each chunk contains the progressive summary
-        console.log('[ShopScout] 📝 Chunk received:', chunk.substring(0, 50) + '...');
+        console.log(`[ShopScout] 📝 Chunk ${chunkCount} received:`, chunk.substring(0, 50) + '...');
+        
+        // Stream chunk to UI in real-time
+        if (onChunk) {
+          onChunk(summary, false);
+        }
       }
 
       summarizer.destroy();
       const totalTime = Date.now() - startTime;
       console.log('[ShopScout] ✅ Product summary generated in', totalTime, 'ms');
+      console.log('[ShopScout] 📄 Total chunks:', chunkCount);
       console.log('[ShopScout] 📄 Final summary length:', summary.length, 'characters');
+      console.log('[ShopScout] 📄 Summary preview:', summary.substring(0, 100) + '...');
+
+      // Send final complete summary
+      if (onChunk) {
+        onChunk(summary, true);
+      }
 
       return summary;
     } catch (error) {
-      console.error('[ShopScout] Product summarization error:', error);
+      console.error('[ShopScout] ❌ Product summarization error:', error);
+      console.error('[ShopScout] Error stack:', error.stack);
       return null;
     }
   },
 
 
   /**
-   * Calculate trust score
+   * Calculate comprehensive trust score with detailed breakdown
    */
   calculateTrustScore(productData, dealData) {
-    let score = 50; // Base score
+    let score = 0;
+    const breakdown = {
+      sellerReputation: 0,
+      ratingQuality: 0,
+      reviewCount: 0,
+      pricePositioning: 0,
+      platformReliability: 0
+    };
 
-    // Seller verification
+    // 1. Platform Reliability (30 points max)
+    const trustedPlatforms = ['amazon', 'walmart', 'target', 'bestbuy', 'best buy', 'ebay'];
+    const platformName = productData.site?.toLowerCase() || '';
+    if (trustedPlatforms.some(p => platformName.includes(p))) {
+      breakdown.platformReliability = 30;
+    } else if (platformName.includes('shopify')) {
+      breakdown.platformReliability = 15;
+    } else {
+      breakdown.platformReliability = 10;
+    }
+
+    // 2. Seller Reputation (25 points max)
     if (productData.seller) {
-      if (productData.seller.toLowerCase().includes('amazon') || 
-          productData.seller.toLowerCase().includes('walmart')) {
-        score += 20;
+      const seller = productData.seller.toLowerCase();
+      if (seller.includes('amazon') || seller.includes('walmart') || 
+          seller.includes('target') || seller.includes('best buy')) {
+        breakdown.sellerReputation = 25; // Official store
+      } else if (seller.includes('verified') || seller.includes('certified')) {
+        breakdown.sellerReputation = 20;
+      } else if (seller.includes('seller') || seller.includes('marketplace')) {
+        breakdown.sellerReputation = 12;
       } else {
-        score += 10;
+        breakdown.sellerReputation = 8;
       }
     }
 
-    // Rating
+    // 3. Rating Quality (25 points max)
     if (productData.rating) {
       const rating = parseFloat(productData.rating);
-      if (rating >= 4.5) score += 15;
-      else if (rating >= 4.0) score += 10;
-      else if (rating >= 3.5) score += 5;
-    }
-
-    // Reviews count
-    if (productData.reviews) {
-      const reviewCount = parseInt(productData.reviews.replace(/\D/g, ''));
-      if (reviewCount > 1000) score += 10;
-      else if (reviewCount > 100) score += 5;
-    }
-
-    // Price comparison
-    if (dealData && dealData.results && dealData.results.length > 0) {
-      const prices = dealData.results.map(r => r.price);
-      const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
-      const currentPrice = productData.price;
-
-      if (currentPrice < avgPrice * 0.7) {
-        // Suspiciously low price
-        score -= 15;
-      } else if (currentPrice < avgPrice * 0.9) {
-        // Good deal
-        score += 5;
+      if (!isNaN(rating)) {
+        if (rating >= 4.7) breakdown.ratingQuality = 25;
+        else if (rating >= 4.5) breakdown.ratingQuality = 22;
+        else if (rating >= 4.0) breakdown.ratingQuality = 18;
+        else if (rating >= 3.5) breakdown.ratingQuality = 12;
+        else if (rating >= 3.0) breakdown.ratingQuality = 7;
+        else breakdown.ratingQuality = 3;
       }
     }
 
-    return Math.max(0, Math.min(100, score));
+    // 4. Review Count (10 points max)
+    if (productData.reviews) {
+      const reviewCount = parseInt(productData.reviews.replace(/\D/g, ''));
+      if (!isNaN(reviewCount)) {
+        if (reviewCount >= 5000) breakdown.reviewCount = 10;
+        else if (reviewCount >= 1000) breakdown.reviewCount = 8;
+        else if (reviewCount >= 500) breakdown.reviewCount = 6;
+        else if (reviewCount >= 100) breakdown.reviewCount = 4;
+        else if (reviewCount >= 10) breakdown.reviewCount = 2;
+        else breakdown.reviewCount = 1;
+      }
+    }
+
+    // 5. Price Positioning (10 points max)
+    if (dealData && dealData.results && dealData.results.length > 0) {
+      const prices = dealData.results.map(r => r.price).filter(p => p > 0);
+      if (prices.length > 0) {
+        const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+        const currentPrice = productData.price;
+
+        if (currentPrice < avgPrice * 0.5) {
+          // Too good to be true - suspicious
+          breakdown.pricePositioning = 0;
+        } else if (currentPrice < avgPrice * 0.8) {
+          // Great deal
+          breakdown.pricePositioning = 10;
+        } else if (currentPrice < avgPrice * 0.95) {
+          // Good price
+          breakdown.pricePositioning = 8;
+        } else if (currentPrice <= avgPrice * 1.1) {
+          // Fair price
+          breakdown.pricePositioning = 6;
+        } else if (currentPrice <= avgPrice * 1.25) {
+          // Slightly expensive
+          breakdown.pricePositioning = 4;
+        } else {
+          // Overpriced
+          breakdown.pricePositioning = 2;
+        }
+      } else {
+        breakdown.pricePositioning = 5; // No comparison data
+      }
+    } else {
+      breakdown.pricePositioning = 5; // No comparison data
+    }
+
+    // Calculate total score
+    score = Object.values(breakdown).reduce((a, b) => a + b, 0);
+
+    console.log('[ShopScout] Trust Score Breakdown:', breakdown);
+    console.log('[ShopScout] Total Trust Score:', score);
+
+    return {
+      score: Math.max(0, Math.min(100, score)),
+      breakdown
+    };
   },
 };
 
@@ -874,8 +1048,8 @@ const handlers = {
         console.log('[ShopScout] 🤖 AI-powered results:', dealData.aiCount, 'from AI,', dealData.serperCount, 'from Serper');
       }
       
-      // Calculate trust score
-      const trustScore = ai.calculateTrustScore(productData, dealData);
+      // Calculate trust score with detailed breakdown
+      const trustScoreResult = ai.calculateTrustScore(productData, dealData);
       
       // Get price history (pass current price for mock data)
       const priceHistory = await api.getPriceHistory(productData.productId, productData.price);
@@ -884,7 +1058,8 @@ const handlers = {
       const initialResult = {
         product: productData,
         deals: dealData,
-        trustScore,
+        trustScore: trustScoreResult.score,
+        trustBreakdown: trustScoreResult.breakdown,
         priceHistory,
         timestamp: Date.now(),
       };
@@ -899,7 +1074,18 @@ const handlers = {
       const generateSummaryAsync = async () => {
         try {
           // Use ONLY Summarizer API for product summary (streaming)
-          const productSummary = await ai.summarizeProduct(productData, dealData).catch(e => {
+          const productSummary = await ai.summarizeProduct(
+            productData, 
+            dealData,
+            // Streaming callback - send chunks to UI in real-time
+            (chunk, isComplete) => {
+              this.notifySidePanel('SUMMARY_STREAMING', { 
+                chunk,
+                complete: isComplete,
+                timestamp: Date.now()
+              });
+            }
+          ).catch(e => {
             console.log('[ShopScout] ⚠️ Product summary skipped:', e.message);
             return null;
           });
@@ -1104,31 +1290,49 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
         
-        // Try to inject content script first (in case it's not loaded)
-        console.log('[ShopScout] Ensuring content script is injected...');
-        try {
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ['content.js']
-          });
-          console.log('[ShopScout] ✅ Content script injected successfully');
-          
-          // Wait a bit for content script to initialize
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (injectError) {
-          // Content script might already be loaded, that's okay
-          console.log('[ShopScout] Content script injection skipped (might already be loaded):', injectError.message);
-        }
-        
-        // Now try to send message
+        // Try to send message first (content script should already be loaded)
         console.log('[ShopScout] Sending SCRAPE_PRODUCT message...');
-        chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PRODUCT' }, (response) => {
+        
+        // First attempt - try existing content script
+        chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PRODUCT' }, async (response) => {
           if (chrome.runtime.lastError) {
-            console.error('[ShopScout] ❌ Content script not responding:', chrome.runtime.lastError.message);
-            sendResponse({ success: false, error: 'Could not communicate with page. Please refresh and try again.' });
+            console.log('[ShopScout] Content script not loaded, injecting now...');
+            
+            // Content script not loaded, inject it
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                files: ['content.js']
+              });
+              console.log('[ShopScout] ✅ Content script injected');
+              
+              // Wait for initialization
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Try again
+              chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PRODUCT' }, (retryResponse) => {
+                if (chrome.runtime.lastError) {
+                  console.error('[ShopScout] ❌ Still not responding:', chrome.runtime.lastError.message);
+                  sendResponse({ success: false, error: 'Could not communicate with page. Please refresh and try again.' });
+                  return;
+                }
+                
+                if (retryResponse && retryResponse.success) {
+                  console.log('[ShopScout] ✅ Manual scan successful (after injection)');
+                  sendResponse({ success: true });
+                } else {
+                  console.log('[ShopScout] ⚠️ Manual scan failed:', retryResponse?.error);
+                  sendResponse({ success: false, error: retryResponse?.error || 'Failed to scrape product data' });
+                }
+              });
+            } catch (injectError) {
+              console.error('[ShopScout] ❌ Injection failed:', injectError.message);
+              sendResponse({ success: false, error: 'Could not inject content script. Please refresh the page.' });
+            }
             return;
           }
           
+          // First attempt succeeded
           if (response && response.success) {
             console.log('[ShopScout] ✅ Manual scan successful');
             sendResponse({ success: true });

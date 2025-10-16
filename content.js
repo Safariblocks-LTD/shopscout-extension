@@ -469,25 +469,81 @@ class ProductScraper {
       }
     }
 
-    // Validate essential data
-    if (!data.title || !data.price) {
-      console.warn('[ShopScout] ⚠️ Missing essential product data!');
-      console.warn('[ShopScout] Title:', data.title);
-      console.warn('[ShopScout] Price:', data.price);
-      console.warn('[ShopScout] Trying to find elements on page...');
-      
-      // Debug: Try to find what's actually on the page
-      const allH1 = document.querySelectorAll('h1');
-      console.log('[ShopScout] Found', allH1.length, 'h1 elements on page');
-      allH1.forEach((h1, i) => {
-        console.log(`[ShopScout] H1 #${i}:`, h1.textContent?.substring(0, 100));
-      });
-      
+    // Comprehensive data validation and normalization
+    console.log('[ShopScout] 🔍 Validating and normalizing product data...');
+    
+    // Validate title
+    if (!data.title || data.title.trim().length === 0) {
+      console.warn('[ShopScout] ⚠️ Missing or invalid title!');
       return null;
+    }
+    
+    // Normalize title (remove excessive whitespace, limit length)
+    data.title = data.title.trim().replace(/\s+/g, ' ').substring(0, 500);
+    
+    // Validate price
+    if (!data.price || isNaN(data.price) || data.price <= 0) {
+      console.warn('[ShopScout] ⚠️ Missing or invalid price!');
+      console.warn('[ShopScout] Price value:', data.price);
+      console.warn('[ShopScout] Raw price:', data.priceRaw);
+      return null;
+    }
+    
+    // Normalize price (ensure 2 decimal places)
+    data.price = parseFloat(data.price.toFixed(2));
+    
+    // Normalize rating (convert to numeric string if needed)
+    if (data.rating) {
+      if (typeof data.rating === 'number') {
+        data.rating = data.rating.toFixed(1);
+      } else if (typeof data.rating === 'string') {
+        const numRating = parseFloat(data.rating);
+        if (!isNaN(numRating) && numRating >= 0 && numRating <= 5) {
+          data.rating = numRating.toFixed(1);
+        }
+      }
+    }
+    
+    // Normalize reviews (ensure consistent format)
+    if (data.reviews) {
+      // Extract just the number if it's in format like "1,234 reviews"
+      const reviewMatch = data.reviews.match(/[\d,]+/);
+      if (reviewMatch) {
+        const reviewCount = parseInt(reviewMatch[0].replace(/,/g, ''));
+        if (!isNaN(reviewCount)) {
+          data.reviews = reviewCount >= 1000 
+            ? `${(reviewCount / 1000).toFixed(1)}K reviews`
+            : `${reviewCount} reviews`;
+        }
+      }
+    } else {
+      data.reviews = '0 reviews';
+    }
+    
+    // Validate image URL
+    if (data.image) {
+      try {
+        new URL(data.image);
+      } catch (e) {
+        console.warn('[ShopScout] ⚠️ Invalid image URL:', data.image);
+        data.image = null;
+      }
+    }
+    
+    // Normalize seller name
+    if (data.seller) {
+      data.seller = data.seller.trim().substring(0, 100);
     }
 
     this.productData = data;
-    console.log('[ShopScout] ✅ Product scraped successfully:', data);
+    console.log('[ShopScout] ✅ Product scraped and validated successfully');
+    console.log('[ShopScout] Final data:', {
+      title: data.title.substring(0, 50) + '...',
+      price: data.price,
+      rating: data.rating,
+      reviews: data.reviews,
+      seller: data.seller
+    });
     
     return data;
   }
@@ -543,22 +599,38 @@ async function initialize() {
     
     // Debounce function to prevent excessive scraping (optimized for speed)
     let scrapeTimeout;
-    function debouncedScrape() {
+    async function debouncedScrape() {
       clearTimeout(scrapeTimeout);
-      scrapeTimeout = setTimeout(() => {
-        console.log('[ShopScout] ⚡ Fast product scrape initiated...');
-        const startTime = performance.now();
-        const productData = scraper.scrape();
-        const duration = performance.now() - startTime;
-        
-        if (productData) {
-          console.log(`[ShopScout] ✅ Product scraped in ${duration.toFixed(0)}ms`);
-          chrome.runtime.sendMessage({
-            type: 'PRODUCT_DETECTED',
-            data: productData
-          });
-        } else {
-          console.log('[ShopScout] ⚠️ Could not scrape product data');
+      scrapeTimeout = setTimeout(async () => {
+        try {
+          console.log('[ShopScout] ⚡ Fast product scrape initiated...');
+          const startTime = performance.now();
+          const productData = await scraper.scrape();
+          const duration = performance.now() - startTime;
+          
+          if (productData) {
+            console.log(`[ShopScout] ✅ Product scraped in ${duration.toFixed(0)}ms`);
+            console.log('[ShopScout] Product data:', {
+              title: productData.title?.substring(0, 50) + '...',
+              price: productData.price,
+              site: productData.site
+            });
+            
+            try {
+              await chrome.runtime.sendMessage({
+                type: 'PRODUCT_DETECTED',
+                data: productData
+              });
+              console.log('[ShopScout] ✅ Product data sent to background successfully');
+            } catch (msgError) {
+              console.error('[ShopScout] ❌ Failed to send product data:', msgError);
+            }
+          } else {
+            console.error('[ShopScout] ❌ Could not scrape product data - scraper returned null');
+          }
+        } catch (error) {
+          console.error('[ShopScout] ❌ Scraping error:', error);
+          console.error('[ShopScout] Error stack:', error.stack);
         }
       }, 300); // Reduced from 1000ms to 300ms for faster response
     }
@@ -573,44 +645,80 @@ async function initialize() {
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[ShopScout Content] Message received:', message.type);
+  console.log('[ShopScout Content] ✅ Message received:', message.type);
+  console.log('[ShopScout Content] Full message:', message);
   
   if (message.type === 'SCRAPE_PRODUCT') {
     console.log('[ShopScout Content] Starting manual scrape...');
+    console.log('[ShopScout Content] Current URL:', window.location.href);
     
     if (!scraper) {
       scraper = new ProductScraper();
+      console.log('[ShopScout Content] Created new scraper');
     }
+    
+    console.log('[ShopScout Content] Scraper site:', scraper.site);
+    console.log('[ShopScout Content] Scraper config exists:', !!scraper.config);
     
     // Check if on product page
     if (!scraper.isProductPage()) {
-      console.log('[ShopScout Content] Not on a product page');
+      console.log('[ShopScout Content] ❌ Not on a product page');
+      console.log('[ShopScout Content] Checking title selectors...');
+      
+      // Debug: check each title selector
+      if (scraper.config && scraper.config.selectors && scraper.config.selectors.title) {
+        scraper.config.selectors.title.forEach((selector, index) => {
+          const element = document.querySelector(selector);
+          console.log(`[ShopScout Content] Title selector ${index + 1}: "${selector}" -> ${element ? 'FOUND' : 'NOT FOUND'}`);
+          if (element) {
+            console.log(`[ShopScout Content] Element text:`, element.textContent?.trim().substring(0, 100));
+          }
+        });
+      }
+      
       sendResponse({ success: false, error: 'Not on a product page' });
       return true;
     }
     
-    // Scrape product data
-    scraper.scrape().then(data => {
-      if (data) {
-        console.log('[ShopScout Content] Product scraped:', data.title);
+    console.log('[ShopScout Content] ✅ Product page confirmed');
+    
+    // Scrape product data (ASYNC - must await)
+    (async () => {
+      try {
+        console.log('[ShopScout Content] 🔍 Starting scrape operation...');
+        const data = await scraper.scrape();
+        console.log('[ShopScout Content] 📊 Scrape completed, data:', data ? 'SUCCESS' : 'NULL');
         
-        // Send product data to background script
-        chrome.runtime.sendMessage({
-          type: 'PRODUCT_DETECTED',
-          data: data
-        }).catch(err => {
-          console.error('[ShopScout Content] Error sending product data:', err);
-        });
-        
-        sendResponse({ success: true, data });
-      } else {
-        console.log('[ShopScout Content] Failed to scrape product data');
-        sendResponse({ success: false, error: 'Failed to scrape product data' });
+        if (data) {
+          console.log('[ShopScout Content] ✅ Product scraped successfully:');
+          console.log('[ShopScout Content] - Title:', data.title?.substring(0, 50) + '...');
+          console.log('[ShopScout Content] - Price:', data.price);
+          console.log('[ShopScout Content] - Site:', data.site);
+          console.log('[ShopScout Content] - Image:', data.image ? 'YES' : 'NO');
+          
+          // Send product data to background script
+          try {
+            await chrome.runtime.sendMessage({
+              type: 'PRODUCT_DETECTED',
+              data: data
+            });
+            console.log('[ShopScout Content] ✅ Product data sent to background');
+          } catch (err) {
+            console.error('[ShopScout Content] Error sending product data:', err);
+          }
+          
+          sendResponse({ success: true, data });
+        } else {
+          console.error('[ShopScout Content] ❌ Failed to scrape product data - returned null');
+          console.error('[ShopScout Content] This usually means title or price extraction failed');
+          sendResponse({ success: false, error: 'Failed to scrape product data' });
+        }
+      } catch (error) {
+        console.error('[ShopScout Content] ❌ Scrape error:', error);
+        console.error('[ShopScout Content] Error stack:', error.stack);
+        sendResponse({ success: false, error: error.message });
       }
-    }).catch(error => {
-      console.error('[ShopScout Content] Scrape error:', error);
-      sendResponse({ success: false, error: error.message });
-    });
+    })();
     
     return true; // Keep channel open for async response
   }
@@ -729,3 +837,35 @@ if (document.readyState === 'loading') {
 }
 
 console.log('[ShopScout] 🚀 Content script loaded on:', window.location.href);
+console.log('[ShopScout] ✅ Content script ready to receive messages');
+
+// Test message listener
+window.addEventListener('load', () => {
+  console.log('[ShopScout] 📄 Page fully loaded, content script active');
+});
+
+// Add global test function for debugging
+window.shopScoutTest = function() {
+  console.log('[ShopScout] 🧪 Test function called - content script is working!');
+  console.log('[ShopScout] Current scraper:', scraper);
+  console.log('[ShopScout] Site detected:', scraper?.site);
+  console.log('[ShopScout] Config exists:', !!scraper?.config);
+  
+  if (scraper) {
+    console.log('[ShopScout] Is product page:', scraper.isProductPage());
+    
+    // Test title selectors
+    if (scraper.config?.selectors?.title) {
+      console.log('[ShopScout] Testing title selectors:');
+      scraper.config.selectors.title.forEach((selector, i) => {
+        const element = document.querySelector(selector);
+        console.log(`  ${i+1}. "${selector}" -> ${element ? '✅ FOUND' : '❌ NOT FOUND'}`);
+        if (element) {
+          console.log(`     Text: "${element.textContent?.trim().substring(0, 100)}..."`);
+        }
+      });
+    }
+  }
+  
+  return 'ShopScout content script is active!';
+};

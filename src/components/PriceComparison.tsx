@@ -30,10 +30,9 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
         )}
       </div>
 
-      {/* Horizontal Card Row */}
+      {/* Horizontal Card Row - All deals shown equally */}
       <div className="grid grid-cols-1 gap-4">
-        {sortedDeals.slice(0, 4).map((deal, index) => {
-          const isBestDeal = index === 0;
+        {sortedDeals.slice(0, 5).map((deal, index) => {
           const isCurrentSite = deal.source.toLowerCase() === currentSite.toLowerCase();
           const dealSavings = calculateSavings(currentPrice, deal.price);
 
@@ -42,19 +41,9 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
               key={index}
               className={cn(
                 'relative group rounded-2xl border-2 transition-all duration-300',
-                isBestDeal
-                  ? 'border-accent bg-gradient-to-br from-accent/5 to-accent/10 shadow-glow-green hover:shadow-glow-green'
-                  : 'border-neutral-200 bg-white hover:border-primary/30 hover:shadow-card-hover card-lift'
+                'border-neutral-200 bg-white hover:border-primary/30 hover:shadow-card-hover card-lift'
               )}
             >
-              {/* Best Deal Badge */}
-              {isBestDeal && (
-                <div className="absolute -top-1 -right-1 z-[5]">
-                  <div className="px-3 py-1 bg-gradient-to-r from-accent to-accent-dark text-white text-xs font-bold uppercase tracking-wide rounded-bl-xl rounded-tr-xl shadow-lg animate-shine">
-                    ✓ Best Deal
-                  </div>
-                </div>
-              )}
 
               <div className="p-5">
                 <div className="flex items-start gap-4">
@@ -83,10 +72,7 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
 
                     {/* Price & Savings */}
                     <div className="flex items-baseline gap-3 mb-3">
-                      <div className={cn(
-                        'text-2xl font-heading font-bold',
-                        isBestDeal ? 'text-accent' : 'text-neutral-900'
-                      )}>
+                      <div className="text-2xl font-heading font-bold text-neutral-900">
                         {formatPrice(deal.price)}
                       </div>
                       {dealSavings.amount > 0 && (
@@ -133,12 +119,7 @@ export default function PriceComparison({ currentPrice, deals, currentSite }: Pr
                       href={deal.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={cn(
-                        'relative z-10 inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95 group',
-                        isBestDeal
-                          ? 'bg-gradient-to-r from-accent to-accent-dark text-white shadow-md hover:shadow-glow-green'
-                          : 'bg-primary/10 text-primary-dark hover:bg-primary hover:text-white'
-                      )}
+                      className="relative z-10 inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95 group bg-primary/10 text-primary-dark hover:bg-primary hover:text-white"
                     >
                       View Deal
                       <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />

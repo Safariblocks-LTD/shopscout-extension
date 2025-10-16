@@ -1,13 +1,14 @@
-import { ThumbsUp, ThumbsDown, Sparkles } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Sparkles, Loader2 } from 'lucide-react';
 
 interface ReviewSummaryProps {
   reviews: string;
   rating: string | null;
   aiSummary?: string | null;
   prosAndCons?: string | null;
+  summaryComplete?: boolean;
 }
 
-export default function ReviewSummary({ reviews, rating, aiSummary, prosAndCons }: ReviewSummaryProps) {
+export default function ReviewSummary({ reviews, rating, aiSummary, prosAndCons, summaryComplete = true }: ReviewSummaryProps) {
   // Parse AI-generated pros and cons from markdown
   const parseProsAndCons = (markdown: string | null | undefined) => {
     if (!markdown) return { pros: [], cons: [] };
@@ -76,11 +77,17 @@ export default function ReviewSummary({ reviews, rating, aiSummary, prosAndCons 
       {aiSummary && (
         <div className="mb-4 p-3 bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-lg">
           <div className="flex items-start gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            {summaryComplete ? (
+              <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            ) : (
+              <Loader2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0 animate-spin" />
+            )}
             <div className="flex-1">
               <div className="text-xs font-semibold text-primary-dark mb-1 flex items-center gap-1">
                 AI Summary
-                <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 rounded-full">Chrome AI</span>
+                <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 rounded-full">
+                  {summaryComplete ? 'Chrome AI' : 'Streaming...'}
+                </span>
               </div>
               <p className="text-sm text-neutral-700 leading-relaxed whitespace-pre-line">
                 {aiSummary}
