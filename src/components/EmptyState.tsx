@@ -1,4 +1,4 @@
-import { ShoppingBag, Sparkles, TrendingDown, Shield, Star, ArrowRight, Bird, Scan } from 'lucide-react';
+import { ShoppingBag, Sparkles, TrendingDown, Shield, Star, ArrowRight, Scan } from 'lucide-react';
 
 export default function EmptyState() {
   const handleScanProduct = () => {
@@ -25,7 +25,11 @@ export default function EmptyState() {
         {/* Logo & Welcome */}
         <div className="text-center mb-6 animate-fade-in">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary to-primary-dark rounded-2xl mb-3 shadow-glow">
-            <Bird className="w-8 h-8 text-white" />
+            <img 
+              src="/assets/icons/shopscoutlogo128.png" 
+              alt="ShopScout" 
+              className="w-10 h-10 object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold font-heading bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-1">
             Ready to Find Better Deals!

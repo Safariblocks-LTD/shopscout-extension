@@ -1,143 +1,189 @@
-import { ThumbsUp, ThumbsDown, Sparkles, Loader2 } from 'lucide-react';
+import { Sparkles, ThumbsUp, Clock, Zap } from 'lucide-react';
 
 interface ReviewSummaryProps {
   reviews: string;
   rating: string | null;
   aiSummary?: string | null;
-  prosAndCons?: string | null;
   summaryComplete?: boolean;
 }
 
-export default function ReviewSummary({ reviews, rating, aiSummary, prosAndCons, summaryComplete = true }: ReviewSummaryProps) {
-  // Parse AI-generated pros and cons from markdown
-  const parseProsAndCons = (markdown: string | null | undefined) => {
-    if (!markdown) return { pros: [], cons: [] };
+export default function ReviewSummary({ reviews, rating, aiSummary, summaryComplete = true }: ReviewSummaryProps) {
+  
+  // Silicon Valley-grade AI summary parsing with enhanced context
+  const parseAIInsights = (summary: string | null | undefined) => {
+    if (!summary) return { 
+      summary: '', 
+      keyInsights: [], 
+      recommendation: '', 
+      savings: null 
+    };
     
-    const lines = markdown.split('\n').filter(line => line.trim());
-    const pros: string[] = [];
-    const cons: string[] = [];
-    let currentSection: 'pros' | 'cons' | null = null;
+    const lines = summary.split('\n').filter(line => line.trim());
+    const keyInsights: string[] = [];
+    let recommendation = '';
+    let savings: number | null = null;
     
-    for (const line of lines) {
+    lines.forEach(line => {
       const trimmed = line.trim();
       
-      // Detect section headers
-      if (trimmed.toLowerCase().includes('pro') && (trimmed.includes('#') || trimmed.includes(':'))) {
-        currentSection = 'pros';
-        continue;
-      }
-      if (trimmed.toLowerCase().includes('con') && (trimmed.includes('#') || trimmed.includes(':'))) {
-        currentSection = 'cons';
-        continue;
+      // Extract key insights
+      if (trimmed.toLowerCase().includes('key insight') || trimmed.toLowerCase().includes('important')) {
+        keyInsights.push(trimmed.replace(/^[-*•]\s*/, ''));
       }
       
-      // Extract bullet points
-      if (trimmed.startsWith('-') || trimmed.startsWith('*') || trimmed.startsWith('•')) {
-        const text = trimmed.substring(1).trim();
-        if (text && currentSection === 'pros') {
-          pros.push(text);
-        } else if (text && currentSection === 'cons') {
-          cons.push(text);
-        }
+      // Extract recommendation
+      if (trimmed.toLowerCase().includes('recommend') || trimmed.toLowerCase().includes('suggest')) {
+        recommendation = trimmed;
       }
-    }
+      
+      // Extract savings
+      const savingsMatch = trimmed.match(/\$?(\d+(?:\.\d{2})?)\s*(?:savings?|save)/i);
+      if (savingsMatch) {
+        savings = parseFloat(savingsMatch[1]);
+      }
+    });
     
-    return { pros, cons };
+    return { summary, keyInsights, recommendation, savings };
   };
 
-  const { pros, cons } = parseProsAndCons(prosAndCons);
+  const { summary, keyInsights, recommendation, savings } = parseAIInsights(aiSummary);
   
-  // Fallback to default if AI didn't generate any
-  const displayPros = pros.length > 0 ? pros : [
-    'Product information available',
-    'Multiple alternatives found',
-    'Price comparison enabled',
-  ];
-  
-  const displayCons = cons.length > 0 ? cons : [
-    'Limited review data available',
-  ];
+  // World-class loading states
+  const LoadingStates = () => (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <div className="absolute inset-0 w-8 h-8 border-2 border-primary/30 rounded-full animate-ping" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-primary">Analyzing with Chrome AI</p>
+          <p className="text-xs text-neutral-600">Gemini Nano processing product data...</p>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-2 bg-gradient-to-r from-primary/20 to-primary/10 rounded-full animate-pulse" />
+        <div className="h-2 bg-gradient-to-r from-primary/10 to-primary/5 rounded-full animate-pulse" />
+        <div className="h-2 bg-gradient-to-r from-primary/5 to-transparent rounded-full animate-pulse" />
+      </div>
+    </div>
+  );
 
   return (
-    <div className="card">
+    <div className="card border-0 shadow-xl bg-gradient-to-br from-white via-white to-primary/5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-neutral-900">Review Summary</h3>
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-8 bg-gradient-to-b from-primary to-primary-dark rounded-full" />
+          <h3 className="text-xl font-bold text-neutral-900">AI Product Insights</h3>
+        </div>
+        
+        <div className="flex items-center gap-3">
           {rating && (
-            <div className="flex items-center gap-1">
-              <span className="text-yellow-500 text-lg">★</span>
-              <span className="font-bold text-neutral-900">{rating}</span>
+            <div className="flex items-center gap-1.5 bg-yellow-50 px-2 py-1 rounded-full">
+              <span className="text-yellow-500 text-sm">★</span>
+              <span className="font-bold text-sm text-neutral-900">{rating}</span>
             </div>
           )}
-          <span className="text-neutral-600">({reviews})</span>
+          <div className="text-xs text-neutral-500 bg-neutral-100 px-2 py-1 rounded-full">
+            {reviews}
+          </div>
         </div>
       </div>
 
-      {/* AI-Generated Summary */}
-      {aiSummary && (
-        <div className="mb-4 p-3 bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-lg">
-          <div className="flex items-start gap-2 mb-2">
-            {summaryComplete ? (
-              <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-            ) : (
-              <Loader2 className="w-4 h-4 text-primary mt-0.5 flex-shrink-0 animate-spin" />
-            )}
-            <div className="flex-1">
-              <div className="text-xs font-semibold text-primary-dark mb-1 flex items-center gap-1">
-                AI Summary
-                <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 rounded-full">
-                  {summaryComplete ? 'Chrome AI' : 'Streaming...'}
-                </span>
+      {/* Instant AI Summary Card */}
+      <div className="space-y-4">
+        {!aiSummary && !summaryComplete && (
+          <LoadingStates />
+        )}
+        
+        {aiSummary && (
+          <div className="space-y-4">
+            {/* Main AI Summary */}
+            <div className="bg-gradient-to-br from-primary/5 via-primary/3 to-transparent border border-primary/10 rounded-xl p-4">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="relative">
+                  {summaryComplete ? (
+                    <div className="w-6 h-6 bg-gradient-to-br from-primary to-primary-dark rounded-full flex items-center justify-center">
+                      <Sparkles className="w-3.5 h-3.5 text-white" />
+                    </div>
+                  ) : (
+                    <div className="w-6 h-6 border-2 border-primary rounded-full flex items-center justify-center animate-spin">
+                      <div className="w-2 h-2 bg-primary rounded-full" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-bold text-primary-dark">Chrome AI Analysis</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      summaryComplete 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-blue-100 text-blue-700 animate-pulse'
+                    }`}>
+                      {summaryComplete ? 'Complete' : 'Analyzing...'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-neutral-800 leading-relaxed font-medium">
+                    {summary}
+                  </p>
+                </div>
               </div>
-              <p className="text-sm text-neutral-700 leading-relaxed whitespace-pre-line">
-                {aiSummary}
-              </p>
+              
+              {/* Key Insights */}
+              {keyInsights.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-primary/10">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-semibold text-neutral-800">Key Insights</span>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {keyInsights.slice(0, 3).map((insight, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs text-neutral-700">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>{insight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {/* Recommendation */}
+              {recommendation && (
+                <div className="mt-3 pt-3 border-t border-primary/10">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-4 h-4 text-success-dark" />
+                    <span className="text-xs font-semibold text-success-dark">Recommendation</span>
+                  </div>
+                  <p className="text-xs text-neutral-700">{recommendation}</p>
+                </div>
+              )}
+              
+              {/* Savings Alert */}
+              {savings !== null && (
+                <div className="mt-3 p-2 bg-success/10 border border-success/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <ThumbsUp className="w-4 h-4 text-success-dark" />
+                    <span className="text-xs font-bold text-success-dark">
+                      Save ${String(savings)} with better deals!
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+        )}
+        
+        {/* Instant Action Buttons */}
+        <div className="flex gap-2">
+          <button className="flex-1 bg-gradient-to-r from-primary to-primary-dark text-white text-sm font-semibold py-2 px-3 rounded-lg hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-1.5">
+            <Zap className="w-3.5 h-3.5" />
+            View Best Deal
+          </button>
+          <button className="flex-1 bg-neutral-100 text-neutral-700 text-sm font-semibold py-2 px-3 rounded-lg hover:bg-neutral-200 transition-all duration-200">
+            Compare All
+          </button>
         </div>
-      )}
-
-      {/* Pros */}
-      {displayPros.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <ThumbsUp className="w-4 h-4 text-success-dark" />
-            <h4 className="text-sm font-semibold text-neutral-900">Pros</h4>
-            {pros.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 bg-success/10 text-success-dark rounded-full">AI Generated</span>
-            )}
-          </div>
-          <ul className="space-y-1.5">
-            {displayPros.map((pro, index) => (
-              <li key={index} className="flex items-start gap-2 text-sm text-neutral-700">
-                <span className="text-success-dark mt-1">•</span>
-                <span>{pro}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Cons */}
-      {displayCons.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <ThumbsDown className="w-4 h-4 text-danger-dark" />
-            <h4 className="text-sm font-semibold text-neutral-900">Cons</h4>
-            {cons.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 bg-danger/10 text-danger-dark rounded-full">AI Generated</span>
-            )}
-          </div>
-          <ul className="space-y-1.5">
-            {displayCons.map((con, index) => (
-              <li key={index} className="flex items-start gap-2 text-sm text-neutral-700">
-                <span className="text-danger-dark mt-1">•</span>
-                <span>{con}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

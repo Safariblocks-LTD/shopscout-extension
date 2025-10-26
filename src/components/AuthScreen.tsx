@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Loader2, CheckCircle2, Bird, Sparkles, Lock, ArrowRight } from 'lucide-react';
+import { Mail, Loader2, CheckCircle2, Sparkles, Lock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type AuthMode = 'signin' | 'signup' | 'magic-link';
@@ -80,10 +80,14 @@ const AuthScreen = () => {
       <div className="w-full max-w-md animate-fade-in">
         {/* Logo and Header */}
         <div className="text-center mb-8 animate-slide-down">
-          {/* Owl Mascot Icon */}
+          {/* ShopScout Logo */}
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary via-primary-dark to-primary-dark rounded-3xl shadow-glow mb-6 relative group">
             <div className="absolute inset-0 bg-gradient-to-br from-primary to-primary-dark rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 animate-pulse-glow"></div>
-            <Bird className="w-10 h-10 text-white relative z-10 group-hover:scale-110 transition-transform duration-300" />
+            <img 
+              src="/assets/icons/shopscoutlogo128.png" 
+              alt="ShopScout" 
+              className="w-12 h-12 object-contain relative z-10 group-hover:scale-110 transition-transform duration-300"
+            />
           </div>
           
           <h1 className="text-4xl font-heading font-bold text-neutral-900 mb-3 tracking-tight">

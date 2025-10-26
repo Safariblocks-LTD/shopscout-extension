@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "description": "Your AI-powered shopping assistant that finds better deals, summarizes reviews, and vets sellers - all while you shop.",
   "icons": {
-    "16": "assets/icons/icon16.png",
-    "32": "assets/icons/icon32.png",
-    "48": "assets/icons/icon48.png",
-    "128": "assets/icons/icon128.png"
+    "16": "assets/icons/shopscoutlogo16.png",
+    "32": "assets/icons/shopscoutlogo32.png",
+    "48": "assets/icons/shopscoutlogo48.png",
+    "128": "assets/icons/shopscoutlogo128.png"
   },
   "permissions": [
     "activeTab",
@@ -72,7 +72,8 @@
         "https://*.jiji.ng/*",
         "https://*.argos.co.uk/*"
       ],
-      "js": ["content.js"],
+      "js": ["ai-utils.js", "ai-summary-renderer.js", "ai-summary-integration.js", "content.js"],
+      "css": ["ai-summary.css"],
       "run_at": "document_end",
       "all_frames": false
     }
@@ -82,10 +83,10 @@
   },
   "action": {
     "default_icon": {
-      "16": "assets/icons/icon16.png",
-      "32": "assets/icons/icon32.png",
-      "48": "assets/icons/icon48.png",
-      "128": "assets/icons/icon128.png"
+      "16": "assets/icons/shopscoutlogo16.png",
+      "32": "assets/icons/shopscoutlogo32.png",
+      "48": "assets/icons/shopscoutlogo48.png",
+      "128": "assets/icons/shopscoutlogo128.png"
     },
     "default_title": "Open ShopScout"
   },

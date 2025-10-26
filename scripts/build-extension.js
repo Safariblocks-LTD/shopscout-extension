@@ -24,6 +24,10 @@ const filesToCopy = [
   'manifest.json',
   'background.js',
   'content.js',
+  'ai-utils.js',
+  'ai-summary-renderer.js',
+  'ai-summary-integration.js',
+  'ai-summary.css',
 ];
 
 console.log('📋 Copying extension files...');

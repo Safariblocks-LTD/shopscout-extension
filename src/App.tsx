@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Bird, Sparkles, LogOut, User as UserIcon, Loader2, RefreshCw } from 'lucide-react';
+import { Sparkles, LogOut, User as UserIcon, Loader2, RefreshCw } from 'lucide-react';
 import PriceHistory from './components/PriceHistory';
 import TrustBadge from './components/TrustBadge';
 import ActionBar from './components/ActionBar';
@@ -237,7 +237,11 @@ function App() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-dark rounded-2xl flex items-center justify-center shadow-sm">
-                <Bird className="w-6 h-6 text-white" />
+                <img 
+                  src="/assets/icons/shopscoutlogo128.png" 
+                  alt="ShopScout" 
+                  className="w-6 h-6 object-contain"
+                />
               </div>
               <div>
                 <h1 className="text-lg font-heading font-bold text-neutral-900">ShopScout</h1>

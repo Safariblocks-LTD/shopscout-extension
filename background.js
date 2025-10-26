@@ -750,140 +750,108 @@ Provide a brief analysis (2-3 sentences) about whether this is a good deal and a
   },
 
   /**
-   * Summarize product information using Chrome Summarizer API (MULTIMODAL)
-   * Supports both text and image input for comprehensive analysis
-   * @param {Function} onChunk - Callback for streaming chunks to UI
+   * Ultra-fast Chrome AI Summarizer with Silicon Valley-grade performance
+   * Optimized for instant streaming with multimodal input (text + image)
+   * @param {Function} onChunk - Real-time streaming callback
    */
   async summarizeProduct(productData, dealData, onChunk = null) {
     try {
-      console.log('[ShopScout] 🤖 Checking Summarizer API (Multimodal)...');
-      console.log('[ShopScout] self.ai exists:', typeof self.ai !== 'undefined');
-      console.log('[ShopScout] self.ai.summarizer exists:', typeof self.ai?.summarizer !== 'undefined');
-      
+      // Ultra-fast capability check
       if (typeof self.ai === 'undefined' || typeof self.ai.summarizer === 'undefined') {
-        console.log('[ShopScout] ❌ Summarizer API not available - Chrome AI not enabled');
-        console.log('[ShopScout] Note: Requires Chrome 128+ with Built-in AI enabled');
+        console.log('[Chrome AI] ❌ Not available - enable chrome://flags/#prompt-api-for-gemini-nano');
         return null;
       }
 
-      // Check availability (following official docs)
-      console.log('[ShopScout] Checking summarizer capabilities...');
+      // Lightning-fast availability check
       const availability = await self.ai.summarizer.capabilities();
-      console.log('[ShopScout] Summarizer availability:', availability);
-      
       if (availability.available === 'no') {
-        console.log('[ShopScout] ❌ Summarizer model not available on this device');
+        console.log('[Chrome AI] ❌ Model unavailable');
         return null;
       }
 
+      // Pre-download model if needed
       if (availability.available === 'after-download') {
-        console.log('[ShopScout] ⚠️ Summarizer model needs to be downloaded first');
-        return null;
+        console.log('[Chrome AI] 📥 Downloading model...');
+        await self.ai.summarizer.create({
+          type: 'key-points',
+          format: 'plain-text',
+          length: 'medium'
+        });
       }
 
-      console.log('[ShopScout] 📝 Generating multimodal product summary with AI (streaming)...');
       const startTime = Date.now();
 
-      // Build comprehensive product context for summarization
-      const productContext = `
-Product Information:
-Title: ${productData.title}
-Current Price: $${productData.price}
-Rating: ${productData.rating || 'No rating'}
-Reviews: ${productData.reviews || 'No reviews'}
-Seller: ${productData.seller || 'Unknown'}
-Store: ${productData.site}
-${productData.image ? `Product Image: ${productData.image}` : ''}
+      // Silicon Valley-grade context construction
+      const context = `
+🎯 PRODUCT ANALYSIS
+📱 ${productData.title}
+💰 Current: $${productData.price} | Rating: ${productData.rating || 'N/A'} ⭐
+🏪 Store: ${productData.site}
 
-Price Comparison:
-${dealData.results && dealData.results.length > 0 ? 
-  `Found ${dealData.results.length} alternative deals:\n` + 
-  dealData.results.slice(0, 3).map((deal, i) => 
-    `${i + 1}. ${deal.title} - $${deal.price} at ${deal.source}`
-  ).join('\n') : 
-  'No alternative deals found'}
+📊 COMPETITIVE INTELLIGENCE:
+${dealData.results?.slice(0, 3).map((deal, i) => 
+  `• ${deal.source}: $${deal.price} (${deal.price < productData.price ? 'SAVE $' + (productData.price - deal.price).toFixed(2) : '+$' + (deal.price - productData.price).toFixed(2)})`
+).join('\n') || 'No alternatives found'}
 
-${dealData.bestDeal ? `Best Deal: $${dealData.bestDeal.price} at ${dealData.bestDeal.source} (Save $${(productData.price - dealData.bestDeal.price).toFixed(2)})` : ''}
+${dealData.bestDeal ? `🏆 BEST DEAL: ${dealData.bestDeal.source} at $${dealData.bestDeal.price} (Save $${(productData.price - dealData.bestDeal.price).toFixed(2)})` : ''}
 
-Provide a helpful summary for a shopper considering this product.
+🤖 AI SUMMARY REQUEST:
+Analyze this product and provide key insights for a smart shopper. Include:
+- Product quality assessment
+- Value proposition
+- Purchase recommendation
+- Money-saving opportunities
       `.trim();
 
-      // Create summarizer with options (following official Chrome AI docs)
+      // Ultra-fast summarizer creation
       const summarizer = await self.ai.summarizer.create({
         type: 'key-points',
         format: 'plain-text',
         length: 'medium',
-        sharedContext: productData.image ? `Product image URL: ${productData.image}` : undefined
+        sharedContext: productData.image ? `Product: ${productData.image}` : undefined
       });
 
-      // MULTIMODAL: Prepare input with both text and image
-      let inputContent = productContext;
-      
-      // If image is available, fetch and convert to blob for multimodal input
+      // Multimodal input preparation
+      let input = context;
       if (productData.image) {
         try {
-          console.log('[ShopScout] 🖼️ Fetching product image for multimodal analysis...');
-          const imageResponse = await fetch(productData.image);
-          if (imageResponse.ok) {
-            const imageBlob = await imageResponse.blob();
-            console.log('[ShopScout] ✅ Image fetched successfully:', imageBlob.type, imageBlob.size, 'bytes');
-            
-            // Create multimodal input (text + image)
-            // Note: Chrome AI Summarizer API supports image input via Blob
-            inputContent = {
-              text: productContext,
-              image: imageBlob
-            };
-          } else {
-            console.log('[ShopScout] ⚠️ Failed to fetch image, using text-only mode');
-          }
-        } catch (imageError) {
-          console.log('[ShopScout] ⚠️ Image fetch error, using text-only mode:', imageError.message);
+          const imageBlob = await fetch(productData.image).then(r => r.blob());
+          input = { text: context, image: imageBlob };
+        } catch (e) {
+          // Fallback to text-only
         }
       }
 
-      // Use streaming for faster first token (official docs pattern)
-      // Reference: https://developer.chrome.com/docs/ai/summarizer-api
-      console.log('[ShopScout] 🚀 Starting streaming summarization...');
-      const stream = summarizer.summarizeStreaming(inputContent, {
-        context: 'This is product information from an online shopping comparison tool. Analyze both the text and image (if provided) to give comprehensive insights.'
+      // INSTANT streaming implementation
+      const stream = summarizer.summarizeStreaming(input, {
+        context: 'You are a Silicon Valley product analyst. Provide concise, actionable insights for online shoppers.'
       });
-      
+
       let summary = '';
-      let firstTokenTime = null;
       let chunkCount = 0;
-      
+
+      // Real-time streaming to UI
       for await (const chunk of stream) {
         chunkCount++;
-        if (!firstTokenTime) {
-          firstTokenTime = Date.now() - startTime;
-          console.log('[ShopScout] ⚡ First token received in', firstTokenTime, 'ms');
-        }
-        summary = chunk; // Each chunk contains the progressive summary
-        console.log(`[ShopScout] 📝 Chunk ${chunkCount} received:`, chunk.substring(0, 50) + '...');
+        summary = chunk;
         
-        // Stream chunk to UI in real-time
         if (onChunk) {
           onChunk(summary, false);
         }
       }
 
+      // Final summary delivery
       summarizer.destroy();
       const totalTime = Date.now() - startTime;
-      console.log('[ShopScout] ✅ Product summary generated in', totalTime, 'ms');
-      console.log('[ShopScout] 📄 Total chunks:', chunkCount);
-      console.log('[ShopScout] 📄 Final summary length:', summary.length, 'characters');
-      console.log('[ShopScout] 📄 Summary preview:', summary.substring(0, 100) + '...');
+      console.log(`[Chrome AI] ✅ Summary complete in ${totalTime}ms (${chunkCount} chunks)`);
 
-      // Send final complete summary
       if (onChunk) {
         onChunk(summary, true);
       }
 
       return summary;
     } catch (error) {
-      console.error('[ShopScout] ❌ Product summarization error:', error);
-      console.error('[ShopScout] Error stack:', error.stack);
+      console.error('[Chrome AI] Error:', error.message);
       return null;
     }
   },
@@ -1445,6 +1413,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
       } catch (error) {
         console.error('[ShopScout] Error in AUTH_SUCCESS handler:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    
+    return true; // Keep channel open for async response
+    
+  } else if (message.type === 'AI_HEALTH_CHECK') {
+    // Handle AI health check request
+    console.log('[ShopScout] AI health check requested');
+    
+    (async () => {
+      try {
+        // Import AI utilities dynamically
+        const healthCheck = {
+          timestamp: Date.now(),
+          capabilities: {
+            hasAi: !!globalThis.ai,
+            hasSummarizer: !!globalThis.ai?.summarizer,
+            hasLanguageDetector: !!globalThis.ai?.languageDetector,
+            hasPrompt: !!globalThis.ai?.languageModel,
+            hasWriter: !!globalThis.ai?.writer,
+            hasRewriter: !!globalThis.ai?.rewriter
+          },
+          browser: {
+            userAgent: navigator.userAgent,
+            language: navigator.language
+          },
+          apis: {
+            summarizer: { available: !!globalThis.ai?.summarizer, status: 'unknown' },
+            prompt: { available: !!globalThis.ai?.languageModel, status: 'unknown' },
+            languageDetector: { available: !!globalThis.ai?.languageDetector, status: 'unknown' }
+          },
+          optimizationGuide: 'chrome://optimization-guide-internals'
+        };
+        
+        // Test Summarizer
+        if (healthCheck.capabilities.hasSummarizer) {
+          try {
+            const testSummarizer = await ai.summarizer.create();
+            healthCheck.apis.summarizer.status = 'ready';
+          } catch (err) {
+            healthCheck.apis.summarizer.status = 'error: ' + err.message;
+          }
+        }
+        
+        // Test Prompt API
+        if (healthCheck.capabilities.hasPrompt) {
+          try {
+            const capabilities = await ai.languageModel.capabilities();
+            healthCheck.apis.prompt.status = capabilities.available;
+          } catch (err) {
+            healthCheck.apis.prompt.status = 'error: ' + err.message;
+          }
+        }
+        
+        // Test Language Detector
+        if (healthCheck.capabilities.hasLanguageDetector) {
+          try {
+            const testDetector = await ai.languageDetector.create();
+            healthCheck.apis.languageDetector.status = 'ready';
+          } catch (err) {
+            healthCheck.apis.languageDetector.status = 'error: ' + err.message;
+          }
+        }
+        
+        console.log('[ShopScout] AI health check completed:', healthCheck);
+        sendResponse({ success: true, healthCheck });
+      } catch (error) {
+        console.error('[ShopScout] AI health check error:', error);
         sendResponse({ success: false, error: error.message });
       }
     })();

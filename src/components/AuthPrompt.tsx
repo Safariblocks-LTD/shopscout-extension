@@ -13,7 +13,11 @@ const AuthPrompt = () => {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary to-primary-dark rounded-3xl mb-4 shadow-xl">
-            <Lock className="w-10 h-10 text-white" />
+            <img 
+              src="/assets/icons/shopscoutlogo128.png" 
+              alt="ShopScout" 
+              className="w-12 h-12 object-contain"
+            />
           </div>
           <h1 className="text-3xl font-black bg-gradient-to-r from-primary via-primary-dark to-accent bg-clip-text text-transparent mb-2">
             Authentication Required

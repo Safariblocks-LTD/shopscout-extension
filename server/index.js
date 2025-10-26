@@ -420,59 +420,210 @@ app.get('/api/search', async (req, res) => {
     console.error('[Search] Stack:', error.stack);
     
     // Return mock data on error
-    res.json(getMockSearchResults(req.query.query, req.query.image));
+
+    console.log(`[Search] ✅ Found ${results.length} valid results on ${platform.name}`);
+    return results;
+  } catch (error) {
+    console.error(`[Search] ❌ Error searching ${platform.name}:`, error.message);
+    if (error.response) {
+      console.error(`[Search] SERP API Error Response:`, JSON.stringify(error.response.data));
+      console.error(`[Search] Status:`, error.response.status);
+    } else {
+      console.error(`[Search] Error stack:`, error.stack);
+    }
+    // Return empty array - NO MOCK DATA for production
+    return [];
   }
 });
 
+// Wait for all searches to complete
+const allResults = await Promise.all(searchPromises);
+  
+// Flatten and filter results
+let combinedResults = allResults
+  .filter(r => r !== null)
+  .flat()
+  .filter(r => r.price > 0); // Remove items without prices
+
+console.log(`[Search] ✅ Found ${combinedResults.length} total results`);
+
+// Calculate quality score for each result
+combinedResults = combinedResults.map(result => ({
+  ...result,
+  qualityScore: calculateQualityScore(result),
+}));
+
+// Sort by quality score (best deals first)
+combinedResults.sort((a, b) => b.qualityScore - a.qualityScore);
+
+// Get top 2-5 best deals
+const topDeals = combinedResults.slice(0, Math.min(5, Math.max(2, combinedResults.length)));
+  
+console.log(`[Search] ✅ Top ${topDeals.length} deals selected from ${combinedResults.length} results`);
+
+// Find absolute best deal
+const bestDeal = topDeals.length > 0 ? topDeals[0] : null;
+
+res.json({
+  success: true, // CRITICAL: Extension expects this field
+  results: topDeals, // Return top 2-5 best deals
+  allResults: combinedResults.slice(0, 20), // All results for reference
+  bestDeal,
+  region: userRegion,
+  platforms: requestedPlatforms.map(key => SUPPORTED_PLATFORMS[key]).filter(Boolean),
+  timestamp: Date.now(),
+  totalResults: combinedResults.length,
+  topDealsCount: topDeals.length,
+});
+
 /**
- * Get price history for a product
+ * Get price history for a product - REAL DATA ONLY
  */
 app.get('/api/price-history/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
-    console.log('[Price History] Request for product:', productId);
-
-    // Check if we have stored price history in database
-    const userId = getUserId(req);
-    if (userId) {
-      try {
-        const history = await PriceHistory.findAll({
-          where: { productId },
-          order: [['recordedAt', 'DESC']],
-          limit: 30
-        });
-        
-        if (history && history.length > 0) {
-          console.log('[Price History] Found', history.length, 'records in database');
-          const formattedHistory = {
-            prices: history.map(h => ({
-              date: h.recordedAt.getTime(),
-              price: parseFloat(h.price)
-            }))
-          };
-          return res.json(formattedHistory);
-        }
-      } catch (dbError) {
-        console.warn('[Price History] Database error:', dbError.message);
-        // Continue to mock data
-      }
+    const { limit = 30 } = req.query;
+    
+    // Get real price history from database - NO MOCK DATA
+    const history = await PriceHistory.findAll({
+      where: { productId },
+      order: [['recordedAt', 'DESC']],
+      limit: parseInt(limit)
+    });
+    
+    if (!history || history.length === 0) {
+      return res.json({ prices: [] });
     }
-
-    // Check cache
-    if (storage.priceHistory.has(productId)) {
-      console.log('[Price History] Returning cached data');
-      return res.json(storage.priceHistory.get(productId));
-    }
-
-    // Generate mock price history
-    console.log('[Price History] Generating mock data');
-    const mockHistory = generateMockPriceHistory();
-    storage.priceHistory.set(productId, mockHistory);
-
-    res.json(mockHistory);
+    
+    res.json({
+      prices: history.map(h => ({
+        date: h.recordedAt.getTime(),
+        price: parseFloat(h.price),
+        source: h.source
+      }))
+    });
   } catch (error) {
-    console.error('[Price History] Error:', error.message, error.stack);
-    res.status(500).json({ error: 'Failed to fetch price history', message: error.message });
+    console.error('Error getting price history:', error.message);
+    res.status(500).json({ error: 'Failed to get price history' });
+  }
+});
+
+/**
+ * Record real-time price data for a product
+ * This endpoint captures actual prices when products are viewed/scraped
+ */
+app.post('/api/price-track/record', async (req, res) => {
+  try {
+    const { productId, price, source, productUrl, productName } = req.body;
+    
+    if (!productId || !price || !source) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: productId, price, source' 
+      });
+    }
+
+    const priceTracker = require('./price-tracker');
+    const record = await priceTracker.recordPrice(
+      productId, 
+      parseFloat(price), 
+      source, 
+      productUrl, 
+      productName
+    );
+
+    res.json({ 
+      success: true, 
+      record: {
+        id: record.id,
+        productId: record.productId,
+        price: parseFloat(record.price),
+        source: record.source,
+        recordedAt: record.recordedAt
+      }
+    });
+  } catch (error) {
+    console.error('[Price Tracker] Error recording price:', error.message);
+    res.status(500).json({ 
+      error: 'Failed to record price', 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Get detailed price statistics for a product
+ */
+app.get('/api/price-stats/:productId', async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const priceTracker = require('./price-tracker');
+    
+    const stats = await priceTracker.getPriceStats(productId);
+    
+    if (!stats) {
+      return res.json({ 
+        message: 'No price data found for this product',
+        prices: [] 
+      });
+    }
+
+    res.json(stats);
+  } catch (error) {
+    console.error('[Price Tracker] Error getting price stats:', error.message);
+    res.status(500).json({ 
+      error: 'Failed to get price stats', 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Get products with recent price drops
+ */
+app.get('/api/price-drops', async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    const priceTracker = require('./price-tracker');
+    
+    const priceDrops = await priceTracker.getPriceDrops(parseInt(days));
+    res.json({ priceDrops });
+  } catch (error) {
+    console.error('[Price Tracker] Error getting price drops:', error.message);
+    res.status(500).json({ 
+      error: 'Failed to get price drops', 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * Track multiple products at once
+ */
+app.post('/api/price-track/bulk', async (req, res) => {
+  try {
+    const { products } = req.body;
+    
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ 
+        error: 'Products array is required' 
+      });
+    }
+
+    const priceTracker = require('./price-tracker');
+    const results = await priceTracker.trackProducts(products);
+    
+    res.json({ 
+      success: true, 
+      results,
+      tracked: results.filter(r => !r.error).length,
+      errors: results.filter(r => r.error).length
+    });
+  } catch (error) {
+    console.error('[Price Tracker] Error tracking products:', error.message);
+    res.status(500).json({ 
+      error: 'Failed to track products', 
+      message: error.message 
+    });
   }
 });
 
@@ -1081,4 +1232,93 @@ async function startServer() {
 startServer().catch(error => {
   console.error('Failed to start server:', error);
   process.exit(1);
+});
+
+/**
+ * Record real-time price data for a product
+ * This endpoint captures actual prices when products are viewed/scraped
+ */
+app.post('/api/price-track/record', async (req, res) => {
+  try {
+    const { productId, price, source, productUrl, productName } = req.body;
+    
+    if (!productId || !price || !source) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: productId, price, source' 
+      });
+    }
+
+    const { recordPrice } = await import('./price-tracker.js');
+    const record = await recordPrice(productId, parseFloat(price), source, productUrl, productName);
+
+    res.json({ 
+      success: true, 
+      record: {
+        id: record.id,
+        productId: record.productId,
+        price: parseFloat(record.price),
+        source: record.source,
+        recordedAt: record.recordedAt
+      }
+    });
+  } catch (error) {
+    console.error('[Price Tracker] Error:', error.message);
+    res.status(500).json({ error: 'Failed to record price', message: error.message });
+  }
+});
+
+/**
+ * Get detailed price statistics for a product
+ */
+app.get('/api/price-stats/:productId', async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const { getPriceStats } = await import('./price-tracker.js');
+    
+    const stats = await getPriceStats(productId);
+    
+    if (!stats) {
+      return res.json({ prices: [] });
+    }
+
+    res.json(stats);
+  } catch (error) {
+    console.error('[Price Tracker] Error:', error.message);
+    res.status(500).json({ error: 'Failed to get price stats', message: error.message });
+  }
+});
+
+/**
+ * Get products with recent price drops
+ */
+app.get('/api/price-drops', async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    const { getPriceDrops } = await import('./price-tracker.js');
+    
+    const priceDrops = await getPriceDrops(parseInt(days));
+    res.json({ priceDrops });
+  } catch (error) {
+    console.error('[Price Tracker] Error:', error.message);
+    res.status(500).json({ error: 'Failed to get price drops', message: error.message });
+  }
+});
+
+/**
+ * Get price history for a product - FIXED to use real data
+ */
+app.get('/api/price-history/:productId', async (req, res) => {
+  try {
+    const { productId } = req.params;
+    console.log('[Price History] Request for product:', productId);
+
+    // Always use real data from database
+    const { getPriceHistory } = await import('./price-tracker.js');
+    const history = await getPriceHistory(productId, 30);
+    
+    res.json({ prices: history });
+  } catch (error) {
+    console.error('[Price History] Error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch price history', message: error.message });
+  }
 });

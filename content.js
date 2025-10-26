@@ -616,20 +616,31 @@ async function initialize() {
               site: productData.site
             });
             
+            // Record real price immediately
+            recordRealPrice();
+            
             try {
               await chrome.runtime.sendMessage({
                 type: 'PRODUCT_DETECTED',
                 data: productData
               });
-              console.log('[ShopScout] ✅ Product data sent to background successfully');
+              console.log('[ShopScout] Product data sent to background successfully');
+              
+              // Generate AI summary immediately after product detection
+              if (typeof initializeAISummary === 'function') {
+                console.log('[ShopScout] Triggering AI summary generation...');
+                initializeAISummary(productData).catch(err => {
+                  console.error('[ShopScout] AI summary failed:', err);
+                });
+              }
             } catch (msgError) {
-              console.error('[ShopScout] ❌ Failed to send product data:', msgError);
+              console.error('[ShopScout] Failed to send product data:', msgError);
             }
           } else {
-            console.error('[ShopScout] ❌ Could not scrape product data - scraper returned null');
+            console.error('[ShopScout] Could not scrape product data - scraper returned null');
           }
         } catch (error) {
-          console.error('[ShopScout] ❌ Scraping error:', error);
+          console.error('[ShopScout] Scraping error:', error);
           console.error('[ShopScout] Error stack:', error.stack);
         }
       }, 300); // Reduced from 1000ms to 300ms for faster response
@@ -703,6 +714,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               data: data
             });
             console.log('[ShopScout Content] ✅ Product data sent to background');
+            
+            // Generate AI summary for manual scrape
+            if (typeof initializeAISummary === 'function') {
+              console.log('[ShopScout Content] Triggering AI summary generation...');
+              initializeAISummary(data).catch(err => {
+                console.error('[ShopScout Content] AI summary failed:', err);
+              });
+            }
           } catch (err) {
             console.error('[ShopScout Content] Error sending product data:', err);
           }
@@ -744,6 +763,12 @@ function startNavigationDetection() {
       console.log('[ShopScout] 🔄 URL change detected:', window.location.href);
       currentUrl = window.location.href;
       lastScrapedUrl = null;
+      
+      // Clean up AI summary on navigation
+      if (typeof cleanupAISummary === 'function') {
+        cleanupAISummary();
+      }
+      
       initialize();
     }
   }, 100); // Check every 100ms for instant response
@@ -866,6 +891,71 @@ window.shopScoutTest = function() {
       });
     }
   }
+  
+  // Auto-record price data for real products
+  async function recordRealPrice() {
+    if (scraper && scraper.isProductPage()) {
+      try {
+        const productData = await scraper.scrape();
+        if (productData && productData.price && productData.title) {
+          const productId = generateProductId(productData.title, productData.url);
+          
+          console.log('[ShopScout] Recording real price:', {
+            productId,
+            title: productData.title,
+            price: productData.price,
+            source: scraper.site,
+            url: productData.url
+          });
+
+          // Send real price data to server
+          fetch('https://shopscout-api.fly.dev/api/price-track/record', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              productId,
+              price: parseFloat(productData.price.replace(/[^0-9.]/g, '')),
+              source: scraper.site,
+              productUrl: productData.url,
+              productName: productData.title
+            })
+          }).then(response => response.json())
+            .then(data => console.log('[ShopScout] Price recorded:', data))
+            .catch(error => console.error('[ShopScout] Error recording price:', error));
+        }
+      } catch (error) {
+        console.error('[ShopScout] Error recording real price:', error);
+      }
+    }
+  }
+
+  // Generate consistent product ID from title and URL
+  function generateProductId(title, url) {
+    const cleanTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const urlHash = btoa(url).slice(0, 8);
+    return `${cleanTitle.substring(0, 30)}_${urlHash}`;
+  }
+
+  // Record price when page loads and when it changes
+  setTimeout(recordRealPrice, 2000); // Record after page loads
+  
+  // Monitor for price changes (for dynamic content)
+  let lastRecordedPrice = null;
+  setInterval(() => {
+    if (scraper && scraper.isProductPage()) {
+      scraper.scrape().then(productData => {
+        if (productData && productData.price) {
+          const currentPrice = parseFloat(productData.price.replace(/[^0-9.]/g, ''));
+          if (currentPrice !== lastRecordedPrice) {
+            lastRecordedPrice = currentPrice;
+            recordRealPrice();
+          }
+        }
+      });
+    }
+  }, 30000); // Check every 30 seconds
   
   return 'ShopScout content script is active!';
 };
