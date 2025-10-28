@@ -22,12 +22,38 @@ const AI_CAPABILITIES = {
  */
 async function detectAICapabilities() {
   try {
-    AI_CAPABILITIES.hasAi = !!globalThis.ai;
-    AI_CAPABILITIES.hasSummarizer = AI_CAPABILITIES.hasAi && !!globalThis.ai.summarizer;
-    AI_CAPABILITIES.hasLanguageDetector = AI_CAPABILITIES.hasAi && !!globalThis.ai.languageDetector;
-    AI_CAPABILITIES.hasPrompt = AI_CAPABILITIES.hasAi && !!globalThis.ai.languageModel;
-    AI_CAPABILITIES.hasWriter = AI_CAPABILITIES.hasAi && !!globalThis.ai.writer;
-    AI_CAPABILITIES.hasRewriter = AI_CAPABILITIES.hasAi && !!globalThis.ai.rewriter;
+    // AI APIs are available via window.ai in content scripts
+    const ai = window.ai || self.ai || globalThis.ai;
+    
+    AI_CAPABILITIES.hasAi = !!ai;
+    AI_CAPABILITIES.hasSummarizer = AI_CAPABILITIES.hasAi && !!ai.summarizer;
+    AI_CAPABILITIES.hasLanguageDetector = AI_CAPABILITIES.hasAi && !!ai.languageDetector;
+    AI_CAPABILITIES.hasPrompt = AI_CAPABILITIES.hasAi && !!ai.languageModel;
+    AI_CAPABILITIES.hasWriter = AI_CAPABILITIES.hasAi && !!ai.writer;
+    AI_CAPABILITIES.hasRewriter = AI_CAPABILITIES.hasAi && !!ai.rewriter;
+    
+    // Test actual availability with proper API calls
+    if (AI_CAPABILITIES.hasSummarizer) {
+      try {
+        const availability = await ai.summarizer.availability();
+        AI_CAPABILITIES.summarizerAvailable = availability !== 'unavailable';
+        console.log('[ShopScout AI] Summarizer availability:', availability);
+      } catch (err) {
+        AI_CAPABILITIES.summarizerAvailable = false;
+        console.warn('[ShopScout AI] Summarizer availability check failed:', err);
+      }
+    }
+    
+    if (AI_CAPABILITIES.hasPrompt) {
+      try {
+        const capabilities = await ai.languageModel.capabilities();
+        AI_CAPABILITIES.promptAvailable = capabilities.available !== 'no';
+        console.log('[ShopScout AI] Prompt API capabilities:', capabilities);
+      } catch (err) {
+        AI_CAPABILITIES.promptAvailable = false;
+        console.warn('[ShopScout AI] Prompt API capabilities check failed:', err);
+      }
+    }
     
     console.log('[ShopScout AI] Capabilities detected:', AI_CAPABILITIES);
     return AI_CAPABILITIES;
@@ -45,7 +71,8 @@ async function detectUserLanguage() {
   let userLang = navigator.language || 'en';
   
   try {
-    if (AI_CAPABILITIES.hasLanguageDetector) {
+    const ai = window.ai || self.ai || globalThis.ai;
+    if (AI_CAPABILITIES.hasLanguageDetector && ai?.languageDetector) {
       const ld = await ai.languageDetector.create();
       const pageText = document.body.innerText?.substring(0, 5000) || navigator.language;
       const detection = await ld.detect(pageText);
@@ -68,21 +95,38 @@ async function detectUserLanguage() {
 }
 
 /**
- * Create Summarizer with download progress monitoring
+ * Create a summarizer with progress monitoring
  * @param {Function} onProgress - Progress callback (0-1)
+ * @param {string} language - Target language code
  * @returns {Promise<Object|null>} Summarizer instance or null
  */
-async function createSummarizerWithMonitor(onProgress) {
+async function createSummarizerWithMonitor(onProgress, language = 'en') {
   try {
-    if (!AI_CAPABILITIES.hasSummarizer) {
+    const ai = window.ai || self.ai || globalThis.ai;
+    
+    if (!AI_CAPABILITIES.hasSummarizer || !ai?.summarizer) {
       console.log('[ShopScout AI] Summarizer not available');
       return null;
     }
     
+    // Check availability first
+    const availability = await ai.summarizer.availability();
+    if (availability === 'unavailable') {
+      console.log('[ShopScout AI] Summarizer API unavailable');
+      return null;
+    }
+    
+    console.log('[ShopScout AI] Creating summarizer...');
+    
     const summarizer = await ai.summarizer.create({
+      type: 'key-points',
+      format: 'plain-text',
+      length: 'short',
+      expectedInputLanguages: [language || 'en'],
+      outputLanguage: language || 'en',
       monitor(m) {
         m.addEventListener('downloadprogress', (e) => {
-          const progress = e.loaded / e.total;
+          const progress = e.loaded;
           console.log('[ShopScout AI] Model download progress:', Math.round(progress * 100) + '%');
           onProgress?.(Math.min(1, progress));
         });
@@ -108,7 +152,7 @@ async function generateSummaryWithSummarizer(text, language, onProgress) {
   const startTime = performance.now();
   
   try {
-    const summarizer = await createSummarizerWithMonitor(onProgress);
+    const summarizer = await createSummarizerWithMonitor(onProgress, language);
     
     if (!summarizer) {
       return {
@@ -124,9 +168,7 @@ async function generateSummaryWithSummarizer(text, language, onProgress) {
     const truncatedText = text.length > maxLength ? text.substring(0, maxLength) : text;
     
     const summary = await summarizer.summarize(truncatedText, {
-      type: 'key-points',
-      format: 'plain-text',
-      length: 'short'
+      context: `Summarize this product information for a shopping assistant. Focus on key features and benefits.`
     });
     
     const timeToFirstByte = performance.now() - startTime;
@@ -166,7 +208,9 @@ async function generateSummaryWithPromptStreaming(text, language, onChunk) {
   let firstChunk = true;
   
   try {
-    if (!AI_CAPABILITIES.hasPrompt) {
+    const ai = window.ai || self.ai || globalThis.ai;
+    
+    if (!AI_CAPABILITIES.hasPrompt || !ai?.languageModel) {
       return {
         success: false,
         error: 'Prompt API unavailable',
@@ -379,9 +423,8 @@ async function getAIHealthCheck() {
   // Test each API
   if (AI_CAPABILITIES.hasSummarizer) {
     try {
-      const testSummarizer = await ai.summarizer.create();
-      health.apis.summarizer.status = 'ready';
-      testSummarizer.destroy?.();
+      const availability = await ai.summarizer.availability();
+      health.apis.summarizer.status = availability;
     } catch (err) {
       health.apis.summarizer.status = 'error: ' + err.message;
     }

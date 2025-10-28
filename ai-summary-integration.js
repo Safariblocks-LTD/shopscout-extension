@@ -93,7 +93,8 @@ async function generateAndDisplaySummary(productData, options = {}) {
   
   try {
     // Initialize AI capabilities
-    await detectAICapabilities();
+    const capabilities = await detectAICapabilities();
+    console.log('[ShopScout AI Integration] AI capabilities:', capabilities);
     
     // Detect user language
     const userLang = await detectUserLanguage();
@@ -117,6 +118,23 @@ async function generateAndDisplaySummary(productData, options = {}) {
           languageDetected: userLang
         }
       });
+      
+      // Notify UI about cached summary
+      try {
+        chrome.runtime.sendMessage({
+          type: 'AI_SUMMARY_GENERATED',
+          data: {
+            apiUsed: 'cache',
+            timeToFirstRender: performance.now() - startTime,
+            languageDetected: userLang,
+            cached: true,
+            productSite: productData.site
+          }
+        });
+      } catch (err) {
+        console.warn('[ShopScout AI Integration] Failed to notify UI:', err);
+      }
+      
       return;
     }
     
@@ -196,6 +214,21 @@ async function generateAndDisplaySummary(productData, options = {}) {
       // Cache the summary
       await setCachedSummary(cacheKey, result.summary, result);
       
+      // Notify UI about summary generation
+      try {
+        chrome.runtime.sendMessage({
+          type: 'AI_SUMMARY_GENERATED',
+          data: {
+            ...result,
+            cached: false,
+            productSite: productData.site,
+            totalTime: performance.now() - startTime
+          }
+        });
+      } catch (err) {
+        console.warn('[ShopScout AI Integration] Failed to notify UI:', err);
+      }
+      
       // Log telemetry
       await logTelemetry({
         event: 'summary_generated',
@@ -244,6 +277,7 @@ async function generateAndDisplaySummary(productData, options = {}) {
  */
 async function initializeAISummary(productData) {
   console.log('[ShopScout AI Integration] Initializing AI summary for product...');
+  console.log('[ShopScout AI Integration] Product data:', productData);
   
   // Check if we should generate summary (latency target: ≤1.5s)
   const shouldGenerate = productData && (productData.title || productData.price);
@@ -254,7 +288,12 @@ async function initializeAISummary(productData) {
   }
   
   // Generate and display summary
-  await generateAndDisplaySummary(productData);
+  try {
+    await generateAndDisplaySummary(productData);
+  } catch (err) {
+    console.error('[ShopScout AI Integration] Failed to generate summary:', err);
+    console.error('[ShopScout AI Integration] Error stack:', err.stack);
+  }
 }
 
 /**

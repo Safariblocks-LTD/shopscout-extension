@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chrome AI Test - Fixed Implementation</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    .status {
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+      font-weight: 600;
+    }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    .info { background: #d1ecf1; color: #0c5460; }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover { background: #5568d3; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .result {
+      background: #f8f9fa;
+      border-left: 4px solid #667eea;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 Chrome AI Test - Fixed Implementation</h1>
+    <p>Testing the corrected Chrome AI API implementation</p>
+    
+    <div id="status" class="status info">Checking Chrome AI...</div>
+    <div id="results"></div>
+    
+    <button id="testAI" disabled>Test AI Summarizer</button>
+    <button id="testUserActivation" disabled>Test User Activation</button>
+    
+    <div class="info" style="margin-top: 20px;">
+      <strong>Fixed Issues:</strong>
+      <ul>
+        <li>✅ Added proper availability check with <code>ai.summarizer.availability()</code></li>
+        <li>✅ Added user activation check with <code>navigator.userActivation.isActive</code></li>
+        <li>✅ Fixed summarizer creation with correct parameters</li>
+        <li>✅ Fixed summarize() call with proper context</li>
+        <li>✅ Added proper error handling</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const statusDiv = document.getElementById('status');
+    const resultsDiv = document.getElementById('results');
+
+    function addResult(message, type = 'info') {
+      const div = document.createElement('div');
+      div.className = `result ${type}`;
+      div.textContent = message;
+      resultsDiv.appendChild(div);
+    }
+
+    async function checkAI() {
+      try {
+        // Check if AI is available
+        const hasAi = !!globalThis.ai;
+        const hasSummarizer = hasAi && !!globalThis.ai.summarizer;
+        
+        if (!hasAi) {
+          statusDiv.className = 'status error';
+          statusDiv.innerHTML = '❌ Chrome AI not available. Enable AI flags.';
+          return;
+        }
+
+        if (!hasSummarizer) {
+          statusDiv.className = 'status error';
+          statusDiv.innerHTML = '❌ Summarizer API not available.';
+          return;
+        }
+
+        // Check availability
+        const availability = await ai.summarizer.availability();
+        addResult(`Summarizer availability: ${availability}`, 'info');
+
+        if (availability === 'unavailable') {
+          statusDiv.className = 'status error';
+          statusDiv.innerHTML = '❌ Summarizer API unavailable. Download model first.';
+          return;
+        }
+
+        // Check user activation
+        const userActive = navigator.userActivation?.isActive;
+        addResult(`User activation: ${userActive}`, 'info');
+
+        statusDiv.className = 'status success';
+        statusDiv.innerHTML = '✅ Chrome AI is available and ready!';
+        
+        document.getElementById('testAI').disabled = false;
+        document.getElementById('testUserActivation').disabled = false;
+
+      } catch (err) {
+        statusDiv.className = 'status error';
+        statusDiv.innerHTML = `❌ Error: ${err.message}`;
+        addResult(`Error checking AI: ${err.message}`, 'error');
+      }
+    }
+
+    async function testUserActivation() {
+      addResult('Testing user activation...', 'info');
+      
+      if (!navigator.userActivation?.isActive) {
+        addResult('❌ User activation not active. Click anywhere on the page first!', 'error');
+        return;
+      }
+      
+      addResult('✅ User activation is active', 'success');
+    }
+
+    async function testAI() {
+      addResult('Testing AI Summarizer...', 'info');
+      
+      try {
+        // Check user activation first
+        if (!navigator.userActivation?.isActive) {
+          addResult('❌ User activation required. Click anywhere on the page first!', 'error');
+          return;
+        }
+
+        // Check availability
+        const availability = await ai.summarizer.availability();
+        if (availability === 'unavailable') {
+          addResult('❌ Summarizer unavailable', 'error');
+          return;
+        }
+
+        // Create summarizer with correct parameters
+        const summarizer = await ai.summarizer.create({
+          type: 'key-points',
+          format: 'plain-text',
+          length: 'short',
+          expectedInputLanguages: ['en'],
+          outputLanguage: 'en',
+          monitor(m) {
+            m.addEventListener('downloadprogress', (e) => {
+              addResult(`Download progress: ${Math.round(e.loaded * 100)}%`, 'info');
+            });
+          }
+        });
+
+        addResult('✅ Summarizer created successfully', 'success');
+
+        // Test summarization
+        const testText = `
+          Sony WH-1000XM5 Wireless Headphones
+          Price: $399.99
+          Rating: 4.8 out of 5 stars
+          
+          Features:
+          • Industry-leading noise cancellation
+          • 30-hour battery life
+          • Premium sound quality
+          • Comfortable design
+          • Multipoint Bluetooth connection
+          
+          Customer reviews praise the exceptional audio quality and comfort.
+        `;
+
+        const summary = await summarizer.summarize(testText, {
+          context: 'Summarize this product information for a shopping assistant.'
+        });
+
+        addResult('✅ Summary generated successfully:', 'success');
+        addResult(summary, 'success');
+
+        addResult('✅ AI test PASSED - Implementation is correct!', 'success');
+
+      } catch (err) {
+        addResult(`❌ AI test failed: ${err.message}`, 'error');
+        addResult(`Stack: ${err.stack}`, 'error');
+      }
+    }
+
+    // Event listeners
+    document.getElementById('testAI').addEventListener('click', testAI);
+    document.getElementById('testUserActivation').addEventListener('click', testUserActivation);
+
+    // Check AI on load
+    checkAI();
+
+    // Add click handler to enable user activation
+    document.addEventListener('click', () => {
+      if (navigator.userActivation?.isActive) {
+        addResult('✅ User activation triggered by click', 'success');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -659,6 +659,81 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[ShopScout Content] ✅ Message received:', message.type);
   console.log('[ShopScout Content] Full message:', message);
   
+  // Handle AI status check request
+  if (message.type === 'GET_AI_STATUS') {
+    console.log('[ShopScout Content] AI status check requested');
+    console.log('[ShopScout Content] Checking self.ai:', !!self.ai);
+    console.log('[ShopScout Content] Checking window.ai:', !!window.ai);
+    
+    (async () => {
+      try {
+        // AI APIs are available via window.ai in content scripts
+        const ai = window.ai || self.ai;
+        
+        const healthCheck = {
+          timestamp: Date.now(),
+          capabilities: {
+            hasAi: !!ai,
+            hasSummarizer: !!ai?.summarizer,
+            hasLanguageDetector: !!ai?.languageDetector,
+            hasPrompt: !!ai?.languageModel,
+            hasWriter: !!ai?.writer,
+            hasRewriter: !!ai?.rewriter
+          },
+          browser: {
+            userAgent: navigator.userAgent,
+            language: navigator.language
+          },
+          apis: {
+            summarizer: { available: !!ai?.summarizer, status: 'unknown' },
+            prompt: { available: !!ai?.languageModel, status: 'unknown' },
+            languageDetector: { available: !!ai?.languageDetector, status: 'unknown' }
+          },
+          optimizationGuide: 'chrome://optimization-guide-internals'
+        };
+        
+        // Test Summarizer
+        if (ai?.summarizer) {
+          try {
+            const availability = await ai.summarizer.availability();
+            healthCheck.apis.summarizer.status = availability;
+          } catch (err) {
+            healthCheck.apis.summarizer.status = 'error: ' + err.message;
+          }
+        }
+        
+        // Test Prompt API
+        if (ai?.languageModel) {
+          try {
+            const capabilities = await ai.languageModel.capabilities();
+            healthCheck.apis.prompt.status = capabilities.available;
+            healthCheck.capabilities.hasPrompt = capabilities.available !== 'no';
+          } catch (err) {
+            healthCheck.apis.prompt.status = 'error: ' + err.message;
+          }
+        }
+        
+        // Test Language Detector
+        if (ai?.languageDetector) {
+          try {
+            const availability = await ai.languageDetector.availability?.();
+            healthCheck.apis.languageDetector.status = availability || 'ready';
+          } catch (err) {
+            healthCheck.apis.languageDetector.status = 'error: ' + err.message;
+          }
+        }
+        
+        console.log('[ShopScout Content] AI health check completed:', healthCheck);
+        sendResponse({ success: true, healthCheck });
+      } catch (error) {
+        console.error('[ShopScout Content] AI health check error:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    
+    return true; // Keep channel open for async response
+  }
+  
   if (message.type === 'SCRAPE_PRODUCT') {
     console.log('[ShopScout Content] Starting manual scrape...');
     console.log('[ShopScout Content] Current URL:', window.location.href);

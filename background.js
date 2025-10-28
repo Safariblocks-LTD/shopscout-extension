@@ -1423,63 +1423,106 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Handle AI health check request
     console.log('[ShopScout] AI health check requested');
     
+    // NOTE: globalThis.ai is NOT available in service workers!
+    // We need to query the content script where AI APIs are available
+    
     (async () => {
       try {
-        // Import AI utilities dynamically
-        const healthCheck = {
-          timestamp: Date.now(),
-          capabilities: {
-            hasAi: !!globalThis.ai,
-            hasSummarizer: !!globalThis.ai?.summarizer,
-            hasLanguageDetector: !!globalThis.ai?.languageDetector,
-            hasPrompt: !!globalThis.ai?.languageModel,
-            hasWriter: !!globalThis.ai?.writer,
-            hasRewriter: !!globalThis.ai?.rewriter
-          },
-          browser: {
-            userAgent: navigator.userAgent,
-            language: navigator.language
-          },
-          apis: {
-            summarizer: { available: !!globalThis.ai?.summarizer, status: 'unknown' },
-            prompt: { available: !!globalThis.ai?.languageModel, status: 'unknown' },
-            languageDetector: { available: !!globalThis.ai?.languageDetector, status: 'unknown' }
-          },
-          optimizationGuide: 'chrome://optimization-guide-internals'
-        };
+        // Try to get active tab and query content script
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         
-        // Test Summarizer
-        if (healthCheck.capabilities.hasSummarizer) {
-          try {
-            const testSummarizer = await ai.summarizer.create();
-            healthCheck.apis.summarizer.status = 'ready';
-          } catch (err) {
-            healthCheck.apis.summarizer.status = 'error: ' + err.message;
-          }
+        if (tabs[0]?.id) {
+          // Ask content script for AI status
+          chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_AI_STATUS' }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.warn('[ShopScout] Could not reach content script:', chrome.runtime.lastError.message);
+              
+              // Return fallback health check
+              sendResponse({
+                success: true,
+                healthCheck: {
+                  timestamp: Date.now(),
+                  capabilities: {
+                    hasAi: false,
+                    hasSummarizer: false,
+                    hasLanguageDetector: false,
+                    hasPrompt: false,
+                    hasWriter: false,
+                    hasRewriter: false
+                  },
+                  browser: {
+                    userAgent: navigator.userAgent,
+                    language: navigator.language
+                  },
+                  apis: {
+                    summarizer: { available: false, status: 'not-available-in-service-worker' },
+                    prompt: { available: false, status: 'not-available-in-service-worker' },
+                    languageDetector: { available: false, status: 'not-available-in-service-worker' }
+                  },
+                  note: 'AI APIs only available in content script context. Navigate to a product page to check AI status.',
+                  optimizationGuide: 'chrome://optimization-guide-internals'
+                }
+              });
+            } else if (response?.healthCheck) {
+              console.log('[ShopScout] AI health check from content script:', response.healthCheck);
+              sendResponse({ success: true, healthCheck: response.healthCheck });
+            } else {
+              // Content script responded but no health check
+              sendResponse({
+                success: true,
+                healthCheck: {
+                  timestamp: Date.now(),
+                  capabilities: {
+                    hasAi: false,
+                    hasSummarizer: false,
+                    hasLanguageDetector: false,
+                    hasPrompt: false,
+                    hasWriter: false,
+                    hasRewriter: false
+                  },
+                  browser: {
+                    userAgent: navigator.userAgent,
+                    language: navigator.language
+                  },
+                  apis: {
+                    summarizer: { available: false, status: 'unknown' },
+                    prompt: { available: false, status: 'unknown' },
+                    languageDetector: { available: false, status: 'unknown' }
+                  },
+                  note: 'Navigate to a product page to check AI status.',
+                  optimizationGuide: 'chrome://optimization-guide-internals'
+                }
+              });
+            }
+          });
+        } else {
+          // No active tab
+          sendResponse({
+            success: true,
+            healthCheck: {
+              timestamp: Date.now(),
+              capabilities: {
+                hasAi: false,
+                hasSummarizer: false,
+                hasLanguageDetector: false,
+                hasPrompt: false,
+                hasWriter: false,
+                hasRewriter: false
+              },
+              browser: {
+                userAgent: navigator.userAgent,
+                language: navigator.language
+              },
+              apis: {
+                summarizer: { available: false, status: 'no-active-tab' },
+                prompt: { available: false, status: 'no-active-tab' },
+                languageDetector: { available: false, status: 'no-active-tab' }
+              },
+              note: 'Open a product page to check AI status.',
+              optimizationGuide: 'chrome://optimization-guide-internals'
+            }
+          });
         }
-        
-        // Test Prompt API
-        if (healthCheck.capabilities.hasPrompt) {
-          try {
-            const capabilities = await ai.languageModel.capabilities();
-            healthCheck.apis.prompt.status = capabilities.available;
-          } catch (err) {
-            healthCheck.apis.prompt.status = 'error: ' + err.message;
-          }
-        }
-        
-        // Test Language Detector
-        if (healthCheck.capabilities.hasLanguageDetector) {
-          try {
-            const testDetector = await ai.languageDetector.create();
-            healthCheck.apis.languageDetector.status = 'ready';
-          } catch (err) {
-            healthCheck.apis.languageDetector.status = 'error: ' + err.message;
-          }
-        }
-        
-        console.log('[ShopScout] AI health check completed:', healthCheck);
-        sendResponse({ success: true, healthCheck });
       } catch (error) {
         console.error('[ShopScout] AI health check error:', error);
         sendResponse({ success: false, error: error.message });

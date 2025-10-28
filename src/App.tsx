@@ -8,6 +8,8 @@ import AuthPrompt from './components/AuthPrompt';
 import PriceComparison from './components/PriceComparison';
 import ReviewSummary from './components/ReviewSummary';
 import AIAssistant from './components/AIAssistant';
+import AIStatus from './components/AIStatus';
+import AISummary from './components/AISummary';
 import { ProductData, AnalysisData } from './types';
 
 const LoadingState = () => (
@@ -338,7 +340,13 @@ function App() {
             </div>
           </div>
 
-          {/* AI Summary - Streaming from Gemini Nano */}
+          {/* Chrome Built-in AI Status */}
+          <AIStatus />
+
+          {/* AI Summary - Generated in Sidepanel */}
+          <AISummary product={product} />
+
+          {/* AI Summary - Streaming from Gemini Nano (legacy) */}
           {analysis?.summary && (
             <ReviewSummary
               reviews={product.reviews || '0 reviews'}

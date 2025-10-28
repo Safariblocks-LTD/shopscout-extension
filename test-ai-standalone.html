@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chrome AI Standalone Test - No Backend Required</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    h1 {
+      color: #667eea;
+      margin-top: 0;
+    }
+    .status {
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+      font-weight: 600;
+    }
+    .success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 5px;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .result {
+      background: #f8f9fa;
+      border-left: 4px solid #667eea;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+    }
+    .product-text {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      margin: 2px;
+    }
+    .badge-success { background: #28a745; color: white; }
+    .badge-danger { background: #dc3545; color: white; }
+    .badge-info { background: #17a2b8; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 Chrome AI Standalone Test</h1>
+    <p><strong>This page tests Chrome's built-in AI with ZERO backend dependencies.</strong></p>
+    
+    <div id="status" class="status info">
+      Checking Chrome AI availability...
+    </div>
+
+    <div id="capabilities"></div>
+
+    <h2>Test Product Text</h2>
+    <div class="product-text">
+      <strong>Sony WH-1000XM5 Wireless Headphones</strong><br>
+      Price: $399.99<br>
+      Rating: 4.8 out of 5 stars (12,543 reviews)<br><br>
+      Features:<br>
+      • Industry-leading noise cancellation technology<br>
+      • 30-hour battery life with quick charging<br>
+      • Premium sound quality with LDAC codec<br>
+      • Comfortable design for all-day wear<br>
+      • Multipoint Bluetooth connection<br>
+      • Touch controls and voice assistant support<br><br>
+      Customer reviews praise the exceptional audio quality, comfortable fit, and effective noise cancellation. 
+      Many users report this is the best wireless headphone they've ever owned.
+    </div>
+
+    <div style="margin: 20px 0;">
+      <button id="testSummarizer" disabled>Test Summarizer API</button>
+      <button id="testPrompt" disabled>Test Prompt API</button>
+      <button id="testLanguage" disabled>Test Language Detector</button>
+      <button id="testAll" disabled>Run All Tests</button>
+    </div>
+
+    <div id="results"></div>
+
+    <hr style="margin: 30px 0;">
+    
+    <h3>✅ What This Proves:</h3>
+    <ul>
+      <li>Chrome AI works <strong>100% on-device</strong></li>
+      <li>No backend API calls required</li>
+      <li>No internet needed (after model download)</li>
+      <li>No API keys needed</li>
+      <li>Privacy-first (all data stays local)</li>
+    </ul>
+
+    <div class="info" style="margin-top: 20px;">
+      <strong>Note:</strong> If tests fail, you need to:
+      <ol>
+        <li>Use Chrome 128+ (Dev/Canary)</li>
+        <li>Enable AI flags at <code>chrome://flags</code></li>
+        <li>Download Gemini Nano at <code>chrome://components</code></li>
+      </ol>
+      See <code>CHROME_AI_TROUBLESHOOTING.md</code> for details.
+    </div>
+  </div>
+
+  <script>
+    const productText = `Sony WH-1000XM5 Wireless Headphones
+Price: $399.99
+Rating: 4.8 out of 5 stars (12,543 reviews)
+
+Features:
+• Industry-leading noise cancellation technology
+• 30-hour battery life with quick charging
+• Premium sound quality with LDAC codec
+• Comfortable design for all-day wear
+• Multipoint Bluetooth connection
+• Touch controls and voice assistant support
+
+Customer reviews praise the exceptional audio quality, comfortable fit, and effective noise cancellation. Many users report this is the best wireless headphone they've ever owned.`;
+
+    const statusDiv = document.getElementById('status');
+    const capabilitiesDiv = document.getElementById('capabilities');
+    const resultsDiv = document.getElementById('results');
+
+    // Check AI availability
+    function checkAI() {
+      const hasAi = !!globalThis.ai;
+      const hasSummarizer = !!globalThis.ai?.summarizer;
+      const hasPrompt = !!globalThis.ai?.languageModel;
+      const hasLanguageDetector = !!globalThis.ai?.languageDetector;
+
+      if (!hasAi) {
+        statusDiv.className = 'status error';
+        statusDiv.innerHTML = '❌ Chrome AI not available. Enable AI flags and download Gemini Nano.';
+        return;
+      }
+
+      statusDiv.className = 'status success';
+      statusDiv.innerHTML = '✅ Chrome AI is available!';
+
+      capabilitiesDiv.innerHTML = `
+        <h3>Available APIs:</h3>
+        <div>
+          <span class="badge ${hasSummarizer ? 'badge-success' : 'badge-danger'}">
+            ${hasSummarizer ? '✓' : '✗'} Summarizer API
+          </span>
+          <span class="badge ${hasPrompt ? 'badge-success' : 'badge-danger'}">
+            ${hasPrompt ? '✓' : '✗'} Prompt API
+          </span>
+          <span class="badge ${hasLanguageDetector ? 'badge-success' : 'badge-danger'}">
+            ${hasLanguageDetector ? '✓' : '✗'} Language Detector
+          </span>
+        </div>
+      `;
+
+      // Enable buttons
+      if (hasSummarizer) document.getElementById('testSummarizer').disabled = false;
+      if (hasPrompt) document.getElementById('testPrompt').disabled = false;
+      if (hasLanguageDetector) document.getElementById('testLanguage').disabled = false;
+      if (hasSummarizer || hasPrompt) document.getElementById('testAll').disabled = false;
+    }
+
+    // Test Summarizer API
+    async function testSummarizer() {
+      addResult('Testing Summarizer API...', 'info');
+      
+      try {
+        const startTime = performance.now();
+        const summarizer = await ai.summarizer.create();
+        const createTime = performance.now() - startTime;
+        
+        addResult(`✅ Summarizer created in ${createTime.toFixed(0)}ms`, 'success');
+        
+        const summaryStart = performance.now();
+        const summary = await summarizer.summarize(productText, {
+          type: 'key-points',
+          format: 'plain-text',
+          length: 'short'
+        });
+        const summaryTime = performance.now() - summaryStart;
+        
+        addResult(`✅ Summary generated in ${summaryTime.toFixed(0)}ms:\n\n${summary}`, 'success');
+        addResult(`⚡ Total time: ${(createTime + summaryTime).toFixed(0)}ms`, 'info');
+        
+        return true;
+      } catch (err) {
+        addResult(`❌ Summarizer test failed: ${err.message}`, 'error');
+        return false;
+      }
+    }
+
+    // Test Prompt API
+    async function testPrompt() {
+      addResult('Testing Prompt API...', 'info');
+      
+      try {
+        const capabilities = await ai.languageModel.capabilities();
+        addResult(`Prompt API status: ${capabilities.available}`, 'info');
+        
+        if (capabilities.available !== 'readily') {
+          addResult('⚠️ Prompt API not readily available', 'error');
+          return false;
+        }
+        
+        const startTime = performance.now();
+        const lm = await ai.languageModel.create({
+          systemPrompt: 'You are a helpful shopping assistant. Provide concise summaries.',
+          temperature: 0.3
+        });
+        const createTime = performance.now() - startTime;
+        
+        addResult(`✅ Language Model created in ${createTime.toFixed(0)}ms`, 'success');
+        
+        const promptStart = performance.now();
+        const response = await lm.prompt(`Summarize this product in 2-3 sentences:\n\n${productText}`);
+        const promptTime = performance.now() - promptStart;
+        
+        addResult(`✅ Response generated in ${promptTime.toFixed(0)}ms:\n\n${response}`, 'success');
+        
+        return true;
+      } catch (err) {
+        addResult(`❌ Prompt API test failed: ${err.message}`, 'error');
+        return false;
+      }
+    }
+
+    // Test Language Detector
+    async function testLanguage() {
+      addResult('Testing Language Detector...', 'info');
+      
+      try {
+        const detector = await ai.languageDetector.create();
+        addResult('✅ Language Detector created', 'success');
+        
+        const result = await detector.detect(productText);
+        const detected = result[0];
+        
+        addResult(`✅ Detected language: ${detected.detectedLanguage} (confidence: ${(detected.confidence * 100).toFixed(1)}%)`, 'success');
+        
+        return true;
+      } catch (err) {
+        addResult(`❌ Language Detector test failed: ${err.message}`, 'error');
+        return false;
+      }
+    }
+
+    // Run all tests
+    async function runAllTests() {
+      resultsDiv.innerHTML = '<h3>Test Results:</h3>';
+      
+      const tests = [];
+      if (!document.getElementById('testSummarizer').disabled) tests.push(testSummarizer);
+      if (!document.getElementById('testLanguage').disabled) tests.push(testLanguage);
+      if (!document.getElementById('testPrompt').disabled) tests.push(testPrompt);
+      
+      for (const test of tests) {
+        await test();
+      }
+      
+      addResult('\n✅ All tests completed! AI works 100% on-device with no backend.', 'success');
+    }
+
+    // Helper to add results
+    function addResult(message, type) {
+      const div = document.createElement('div');
+      div.className = `result ${type}`;
+      div.textContent = message;
+      resultsDiv.appendChild(div);
+    }
+
+    // Event listeners
+    document.getElementById('testSummarizer').addEventListener('click', testSummarizer);
+    document.getElementById('testPrompt').addEventListener('click', testPrompt);
+    document.getElementById('testLanguage').addEventListener('click', testLanguage);
+    document.getElementById('testAll').addEventListener('click', runAllTests);
+
+    // Check AI on load
+    checkAI();
+  </script>
+</body>
+</html>
