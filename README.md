@@ -200,7 +200,23 @@ npm test
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+
+### What does this mean?
+
+- **Freedom to Use**: You are free to use this software for any purpose.
+- **Freedom to Study**: You can study how the software works and modify it.
+- **Freedom to Share**: You can distribute the software to others.
+- **Copyleft**: If you modify and distribute this software, you must make your changes available under the same AGPL-3.0 license.
+- **Network Use**: If you use this software to provide a service over a network, you must provide the corresponding source code to users of the service.
+
+### Full License Text
+
+The full text of the AGPL-3.0 license can be found in the [LICENSE](LICENSE) file. For more information about the AGPL-3.0 license, please visit the [GNU website](https://www.gnu.org/licenses/agpl-3.0.en.html).
+
+### Using ShopScout in Your Project
+
+If you wish to use ShopScout in your project, please note that any derivative work must also be licensed under AGPL-3.0. If you need different licensing terms, please contact [Safariblocks Ltd](mailto:contact@safariblocks.com) to discuss commercial licensing options.
 
 ## Support
 
