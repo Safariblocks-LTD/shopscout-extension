@@ -662,40 +662,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle AI status check request
   if (message.type === 'GET_AI_STATUS') {
     console.log('[ShopScout Content] AI status check requested');
-    console.log('[ShopScout Content] Checking self.ai:', !!self.ai);
-    console.log('[ShopScout Content] Checking window.ai:', !!window.ai);
+    console.log('[ShopScout Content] Checking Summarizer:', 'Summarizer' in self || 'Summarizer' in window);
+    console.log('[ShopScout Content] Checking LanguageModel:', 'LanguageModel' in self || 'LanguageModel' in window);
     
     (async () => {
       try {
-        // AI APIs are available via window.ai in content scripts
-        const ai = window.ai || self.ai;
+        // Check for Chrome AI APIs using correct globals
+        const hasSummarizer = 'Summarizer' in self || 'Summarizer' in window;
+        const hasLanguageModel = 'LanguageModel' in self || 'LanguageModel' in window;
+        const hasLanguageDetector = 'LanguageDetector' in self || 'LanguageDetector' in window;
+        const hasWriter = 'Writer' in self || 'Writer' in window;
+        const hasRewriter = 'Rewriter' in self || 'Rewriter' in window;
         
         const healthCheck = {
           timestamp: Date.now(),
           capabilities: {
-            hasAi: !!ai,
-            hasSummarizer: !!ai?.summarizer,
-            hasLanguageDetector: !!ai?.languageDetector,
-            hasPrompt: !!ai?.languageModel,
-            hasWriter: !!ai?.writer,
-            hasRewriter: !!ai?.rewriter
+            hasAi: hasSummarizer || hasLanguageModel,
+            hasSummarizer,
+            hasLanguageDetector,
+            hasPrompt: hasLanguageModel,
+            hasWriter,
+            hasRewriter
           },
           browser: {
             userAgent: navigator.userAgent,
             language: navigator.language
           },
           apis: {
-            summarizer: { available: !!ai?.summarizer, status: 'unknown' },
-            prompt: { available: !!ai?.languageModel, status: 'unknown' },
-            languageDetector: { available: !!ai?.languageDetector, status: 'unknown' }
+            summarizer: { available: hasSummarizer, status: 'unknown' },
+            prompt: { available: hasLanguageModel, status: 'unknown' },
+            languageDetector: { available: hasLanguageDetector, status: 'unknown' }
           },
           optimizationGuide: 'chrome://optimization-guide-internals'
         };
         
         // Test Summarizer
-        if (ai?.summarizer) {
+        if (hasSummarizer) {
           try {
-            const availability = await ai.summarizer.availability();
+            const Summarizer = self.Summarizer || window.Summarizer;
+            const availability = await Summarizer.availability();
             healthCheck.apis.summarizer.status = availability;
           } catch (err) {
             healthCheck.apis.summarizer.status = 'error: ' + err.message;
@@ -703,9 +708,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         
         // Test Prompt API
-        if (ai?.languageModel) {
+        if (hasLanguageModel) {
           try {
-            const capabilities = await ai.languageModel.capabilities();
+            const LanguageModel = self.LanguageModel || window.LanguageModel;
+            const capabilities = await LanguageModel.capabilities();
             healthCheck.apis.prompt.status = capabilities.available;
             healthCheck.capabilities.hasPrompt = capabilities.available !== 'no';
           } catch (err) {
@@ -714,9 +720,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         
         // Test Language Detector
-        if (ai?.languageDetector) {
+        if (hasLanguageDetector) {
           try {
-            const availability = await ai.languageDetector.availability?.();
+            const LanguageDetector = self.LanguageDetector || window.LanguageDetector;
+            const availability = await LanguageDetector.availability?.();
             healthCheck.apis.languageDetector.status = availability || 'ready';
           } catch (err) {
             healthCheck.apis.languageDetector.status = 'error: ' + err.message;

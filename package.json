@@ -2,6 +2,7 @@
   "name": "shopscout",
   "version": "1.0.0",
   "description": "ShopScout - AI Shopping Agent Chrome Extension",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {

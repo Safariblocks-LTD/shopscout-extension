@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome AI API Test</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #357ae8;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success { color: #0f9d58; }
+        .error { color: #d93025; }
+        .warning { color: #f9ab00; }
+    </style>
+</head>
+<body>
+    <h1>Chrome AI API Test Page</h1>
+    <p>This page tests the Chrome Built-in AI APIs to verify they're working correctly.</p>
+
+    <div class="test-section">
+        <h2>1. API Detection</h2>
+        <button onclick="testDetection()">Test API Detection</button>
+        <div id="detection-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Summarizer API</h2>
+        <button onclick="testSummarizer()">Test Summarizer</button>
+        <div id="summarizer-result" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Prompt API (LanguageModel)</h2>
+        <button onclick="testPromptAPI()">Test Prompt API</button>
+        <div id="prompt-result" class="result"></div>
+    </div>
+
+    <script>
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : '';
+            element.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+        }
+
+        async function testDetection() {
+            const resultId = 'detection-result';
+            document.getElementById(resultId).innerHTML = '';
+            
+            log(resultId, '🔍 Checking for Chrome AI APIs...');
+            
+            const apis = {
+                'Summarizer': 'Summarizer' in self || 'Summarizer' in window,
+                'LanguageModel': 'LanguageModel' in self || 'LanguageModel' in window,
+                'LanguageDetector': 'LanguageDetector' in self || 'LanguageDetector' in window,
+                'Writer': 'Writer' in self || 'Writer' in window,
+                'Rewriter': 'Rewriter' in self || 'Rewriter' in window
+            };
+            
+            for (const [api, available] of Object.entries(apis)) {
+                if (available) {
+                    log(resultId, `✅ ${api}: Available`, 'success');
+                    
+                    // Check availability status
+                    try {
+                        const API = self[api] || window[api];
+                        if (API.availability) {
+                            const status = await API.availability();
+                            log(resultId, `   Status: ${status}`, 'success');
+                        } else if (API.capabilities) {
+                            const caps = await API.capabilities();
+                            log(resultId, `   Status: ${caps.available}`, 'success');
+                        }
+                    } catch (err) {
+                        log(resultId, `   Error checking status: ${err.message}`, 'error');
+                    }
+                } else {
+                    log(resultId, `❌ ${api}: Not Available`, 'error');
+                }
+            }
+        }
+
+        async function testSummarizer() {
+            const resultId = 'summarizer-result';
+            document.getElementById(resultId).innerHTML = '';
+            
+            log(resultId, '🤖 Testing Summarizer API...');
+            
+            if (!('Summarizer' in self || 'Summarizer' in window)) {
+                log(resultId, '❌ Summarizer API not available', 'error');
+                return;
+            }
+            
+            try {
+                const Summarizer = self.Summarizer || window.Summarizer;
+                const availability = await Summarizer.availability();
+                log(resultId, `Availability: ${availability}`, 'success');
+                
+                if (availability === 'unavailable') {
+                    log(resultId, '❌ Summarizer is unavailable', 'error');
+                    return;
+                }
+                
+                log(resultId, 'Creating summarizer...');
+                const summarizer = await Summarizer.create({
+                    sharedContext: 'This is a test product description.',
+                    type: 'key-points',
+                    format: 'plain-text',
+                    length: 'short'
+                });
+                
+                log(resultId, '✅ Summarizer created successfully', 'success');
+                
+                const testText = `
+                    Apple iPhone 15 Pro Max - The most advanced iPhone ever.
+                    Features include A17 Pro chip, titanium design, 48MP camera,
+                    USB-C port, and all-day battery life. Available in 4 colors.
+                    Starting at $1199. 5G enabled with excellent performance.
+                `;
+                
+                log(resultId, 'Generating summary...');
+                const summary = await summarizer.summarize(testText);
+                
+                log(resultId, '✅ Summary generated:', 'success');
+                log(resultId, summary, 'success');
+                
+            } catch (err) {
+                log(resultId, `❌ Error: ${err.message}`, 'error');
+                console.error(err);
+            }
+        }
+
+        async function testPromptAPI() {
+            const resultId = 'prompt-result';
+            document.getElementById(resultId).innerHTML = '';
+            
+            log(resultId, '🤖 Testing Prompt API (LanguageModel)...');
+            
+            if (!('LanguageModel' in self || 'LanguageModel' in window)) {
+                log(resultId, '❌ LanguageModel API not available', 'error');
+                return;
+            }
+            
+            try {
+                const LanguageModel = self.LanguageModel || window.LanguageModel;
+                const capabilities = await LanguageModel.capabilities();
+                log(resultId, `Availability: ${capabilities.available}`, 'success');
+                
+                if (capabilities.available === 'no') {
+                    log(resultId, '❌ LanguageModel is unavailable', 'error');
+                    return;
+                }
+                
+                log(resultId, 'Creating session...');
+                const session = await LanguageModel.create({
+                    systemPrompt: 'You are a helpful shopping assistant.',
+                    temperature: 0.7,
+                    topK: 3
+                });
+                
+                log(resultId, '✅ Session created successfully', 'success');
+                
+                log(resultId, 'Sending prompt...');
+                const response = await session.prompt('Summarize the key features of a smartphone in 2 sentences.');
+                
+                log(resultId, '✅ Response received:', 'success');
+                log(resultId, response, 'success');
+                
+                session.destroy();
+                log(resultId, '✅ Session destroyed', 'success');
+                
+            } catch (err) {
+                log(resultId, `❌ Error: ${err.message}`, 'error');
+                console.error(err);
+            }
+        }
+
+        // Auto-run detection on page load
+        window.addEventListener('load', () => {
+            setTimeout(testDetection, 500);
+        });
+    </script>
+</body>
+</html>

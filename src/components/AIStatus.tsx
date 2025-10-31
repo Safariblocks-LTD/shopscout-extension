@@ -41,23 +41,27 @@ const AIStatus = () => {
   const fetchHealthCheck = async () => {
     setRefreshing(true);
     try {
-      // Check AI directly in sidepanel context (where it IS available)
-      const ai = (window as any).ai || (self as any).ai;
+      // Check for Chrome AI APIs using correct globals
+      const hasSummarizer = 'Summarizer' in self || 'Summarizer' in window;
+      const hasLanguageModel = 'LanguageModel' in self || 'LanguageModel' in window;
+      const hasLanguageDetector = 'LanguageDetector' in self || 'LanguageDetector' in window;
+      const hasWriter = 'Writer' in self || 'Writer' in window;
+      const hasRewriter = 'Rewriter' in self || 'Rewriter' in window;
       
       const healthCheck: AIHealthCheck = {
         timestamp: Date.now(),
         capabilities: {
-          hasAi: !!ai,
-          hasSummarizer: !!ai?.summarizer,
-          hasLanguageDetector: !!ai?.languageDetector,
-          hasPrompt: !!ai?.languageModel,
-          hasWriter: !!ai?.writer,
-          hasRewriter: !!ai?.rewriter
+          hasAi: hasSummarizer || hasLanguageModel,
+          hasSummarizer,
+          hasLanguageDetector,
+          hasPrompt: hasLanguageModel,
+          hasWriter,
+          hasRewriter
         },
         apis: {
-          summarizer: { available: !!ai?.summarizer, status: 'unknown' },
-          prompt: { available: !!ai?.languageModel, status: 'unknown' },
-          languageDetector: { available: !!ai?.languageDetector, status: 'unknown' }
+          summarizer: { available: hasSummarizer, status: 'unknown' },
+          prompt: { available: hasLanguageModel, status: 'unknown' },
+          languageDetector: { available: hasLanguageDetector, status: 'unknown' }
         },
         browser: {
           userAgent: navigator.userAgent,
@@ -66,9 +70,10 @@ const AIStatus = () => {
       };
 
       // Test Summarizer availability
-      if (ai?.summarizer) {
+      if (hasSummarizer) {
         try {
-          const availability = await ai.summarizer.availability();
+          const Summarizer = (self as any).Summarizer || (window as any).Summarizer;
+          const availability = await Summarizer.availability();
           healthCheck.apis.summarizer.status = availability;
         } catch (err: any) {
           healthCheck.apis.summarizer.status = 'error: ' + err.message;
@@ -76,9 +81,10 @@ const AIStatus = () => {
       }
 
       // Test Prompt API availability
-      if (ai?.languageModel) {
+      if (hasLanguageModel) {
         try {
-          const capabilities = await ai.languageModel.capabilities();
+          const LanguageModel = (self as any).LanguageModel || (window as any).LanguageModel;
+          const capabilities = await LanguageModel.capabilities();
           healthCheck.apis.prompt.status = capabilities.available;
           healthCheck.capabilities.hasPrompt = capabilities.available !== 'no';
         } catch (err: any) {
@@ -87,9 +93,10 @@ const AIStatus = () => {
       }
 
       // Test Language Detector availability
-      if (ai?.languageDetector) {
+      if (hasLanguageDetector) {
         try {
-          const availability = await ai.languageDetector.availability?.();
+          const LanguageDetector = (self as any).LanguageDetector || (window as any).LanguageDetector;
+          const availability = await LanguageDetector.availability?.();
           healthCheck.apis.languageDetector.status = availability || 'ready';
         } catch (err: any) {
           healthCheck.apis.languageDetector.status = 'error: ' + err.message;
@@ -285,8 +292,9 @@ const AIStatus = () => {
                   <p className="font-semibold mb-1">Chrome AI not available</p>
                   <p className="mb-2">To enable on-device AI summaries:</p>
                   <ol className="list-decimal list-inside space-y-1 ml-2">
-                    <li>Use Chrome 128+ (Dev/Canary)</li>
-                    <li>Enable AI flags at <code className="bg-yellow-100 px-1 rounded">chrome://flags</code></li>
+                    <li>Use Chrome 138+ (Stable/Dev/Canary)</li>
+                    <li>Enable flags: <code className="bg-yellow-100 px-1 rounded">chrome://flags/#optimization-guide-on-device-model</code></li>
+                    <li>Enable: <code className="bg-yellow-100 px-1 rounded">chrome://flags/#prompt-api-for-gemini-nano</code></li>
                     <li>Download Gemini Nano at <code className="bg-yellow-100 px-1 rounded">chrome://components</code></li>
                   </ol>
                 </div>

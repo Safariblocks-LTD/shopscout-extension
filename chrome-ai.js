@@ -9,12 +9,13 @@ const ChromeAI = {
    */
   async isAvailable() {
     try {
-      if (!window.ai || !window.ai.languageModel) {
+      if (!('LanguageModel' in self || 'LanguageModel' in window)) {
         console.log('[ChromeAI] Prompt API not available');
         return false;
       }
       
-      const capabilities = await window.ai.languageModel.capabilities();
+      const LanguageModel = self.LanguageModel || window.LanguageModel;
+      const capabilities = await LanguageModel.capabilities();
       console.log('[ChromeAI] Capabilities:', capabilities);
       
       return capabilities.available === 'readily' || capabilities.available === 'after-download';
@@ -29,7 +30,8 @@ const ChromeAI = {
    */
   async createSession() {
     try {
-      const session = await window.ai.languageModel.create({
+      const LanguageModel = self.LanguageModel || window.LanguageModel;
+      const session = await LanguageModel.create({
         temperature: 0.7,
         topK: 3,
       });

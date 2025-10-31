@@ -2,6 +2,7 @@
   "name": "shopscout-auth-server",
   "version": "1.0.0",
   "description": "ShopScout Authentication Web Server",
+  "license": "AGPL-3.0-only",
   "main": "server.js",
   "type": "module",
   "scripts": {

@@ -29,36 +29,28 @@ export async function generateAISummary(productData: ProductData): Promise<Summa
   const startTime = performance.now();
   
   try {
-    // Access AI APIs in sidepanel context
-    const ai = (window as any).ai || (self as any).ai;
-    
-    if (!ai) {
-      return {
-        success: false,
-        error: 'Chrome AI not available. Enable AI flags and download Gemini Nano.'
-      };
-    }
-
     // Prepare product text
     const productText = formatProductText(productData);
     
-    // Try Summarizer API first
-    if (ai.summarizer) {
+    // Try Summarizer API first (Chrome 138+)
+    if ('Summarizer' in self || 'Summarizer' in window) {
       try {
-        const availability = await ai.summarizer.availability();
+        const Summarizer = (self as any).Summarizer || (window as any).Summarizer;
+        const availability = await Summarizer.availability();
+        
+        console.log('[AI Summary] Summarizer availability:', availability);
         
         if (availability === 'readily' || availability === 'after-download') {
           console.log('[AI Summary] Using Summarizer API');
           
-          const summarizer = await ai.summarizer.create({
+          const summarizer = await Summarizer.create({
+            sharedContext: 'Summarize this product for a shopping assistant. Focus on key features and value.',
             type: 'key-points',
             format: 'plain-text',
             length: 'short'
           });
           
-          const summary = await summarizer.summarize(productText, {
-            context: 'Summarize this product for a shopping assistant. Focus on key features and value.'
-          });
+          const summary = await summarizer.summarize(productText);
           
           const timeToGenerate = performance.now() - startTime;
           
@@ -74,15 +66,18 @@ export async function generateAISummary(productData: ProductData): Promise<Summa
       }
     }
 
-    // Fallback to Prompt API
-    if (ai.languageModel) {
+    // Fallback to Prompt API (Chrome Extensions only)
+    if ('LanguageModel' in self || 'LanguageModel' in window) {
       try {
-        const capabilities = await ai.languageModel.capabilities();
+        const LanguageModel = (self as any).LanguageModel || (window as any).LanguageModel;
+        const capabilities = await LanguageModel.capabilities();
         
-        if (capabilities.available === 'readily') {
+        console.log('[AI Summary] LanguageModel capabilities:', capabilities);
+        
+        if (capabilities.available === 'readily' || capabilities.available === 'after-download') {
           console.log('[AI Summary] Using Prompt API');
           
-          const session = await ai.languageModel.create({
+          const session = await LanguageModel.create({
             systemPrompt: `You are a concise shopping assistant. Summarize product information in 2-3 bullet points or short sentences. Focus on key features, price value, and quality indicators.`,
             temperature: 0.3,
             topK: 3
@@ -107,7 +102,7 @@ export async function generateAISummary(productData: ProductData): Promise<Summa
 
     return {
       success: false,
-      error: 'No AI API available or ready'
+      error: 'Chrome AI not available. Ensure Chrome 138+ with AI features enabled.'
     };
 
   } catch (error: any) {
@@ -156,49 +151,43 @@ function formatProductText(product: ProductData): string {
  * Check if AI is available in current context
  */
 export function isAIAvailable(): boolean {
-  const ai = (window as any).ai || (self as any).ai;
-  return !!(ai?.summarizer || ai?.languageModel);
+  return ('Summarizer' in self || 'Summarizer' in window || 
+          'LanguageModel' in self || 'LanguageModel' in window);
 }
 
 /**
  * Get AI capabilities
  */
 export async function getAICapabilities() {
-  const ai = (window as any).ai || (self as any).ai;
-  
-  if (!ai) {
-    return {
-      available: false,
-      summarizer: false,
-      prompt: false
-    };
-  }
-
   const capabilities = {
-    available: true,
+    available: false,
     summarizer: false,
     prompt: false,
     summarizerStatus: 'unknown',
     promptStatus: 'unknown'
   };
 
-  // Check Summarizer
-  if (ai.summarizer) {
+  // Check Summarizer API
+  if ('Summarizer' in self || 'Summarizer' in window) {
     try {
-      const availability = await ai.summarizer.availability();
+      const Summarizer = (self as any).Summarizer || (window as any).Summarizer;
+      const availability = await Summarizer.availability();
       capabilities.summarizer = availability !== 'unavailable';
       capabilities.summarizerStatus = availability;
+      capabilities.available = true;
     } catch (err) {
       console.warn('[AI] Summarizer check failed:', err);
     }
   }
 
-  // Check Prompt API
-  if (ai.languageModel) {
+  // Check Prompt API (LanguageModel)
+  if ('LanguageModel' in self || 'LanguageModel' in window) {
     try {
-      const promptCaps = await ai.languageModel.capabilities();
-      capabilities.prompt = promptCaps.available === 'readily';
+      const LanguageModel = (self as any).LanguageModel || (window as any).LanguageModel;
+      const promptCaps = await LanguageModel.capabilities();
+      capabilities.prompt = promptCaps.available === 'readily' || promptCaps.available === 'after-download';
       capabilities.promptStatus = promptCaps.available;
+      capabilities.available = true;
     } catch (err) {
       console.warn('[AI] Prompt API check failed:', err);
     }

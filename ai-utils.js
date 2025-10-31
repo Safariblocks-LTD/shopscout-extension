@@ -22,20 +22,19 @@ const AI_CAPABILITIES = {
  */
 async function detectAICapabilities() {
   try {
-    // AI APIs are available via window.ai in content scripts
-    const ai = window.ai || self.ai || globalThis.ai;
-    
-    AI_CAPABILITIES.hasAi = !!ai;
-    AI_CAPABILITIES.hasSummarizer = AI_CAPABILITIES.hasAi && !!ai.summarizer;
-    AI_CAPABILITIES.hasLanguageDetector = AI_CAPABILITIES.hasAi && !!ai.languageDetector;
-    AI_CAPABILITIES.hasPrompt = AI_CAPABILITIES.hasAi && !!ai.languageModel;
-    AI_CAPABILITIES.hasWriter = AI_CAPABILITIES.hasAi && !!ai.writer;
-    AI_CAPABILITIES.hasRewriter = AI_CAPABILITIES.hasAi && !!ai.rewriter;
+    // Check for Chrome AI APIs using correct globals
+    AI_CAPABILITIES.hasSummarizer = 'Summarizer' in self || 'Summarizer' in window;
+    AI_CAPABILITIES.hasPrompt = 'LanguageModel' in self || 'LanguageModel' in window;
+    AI_CAPABILITIES.hasLanguageDetector = 'LanguageDetector' in self || 'LanguageDetector' in window;
+    AI_CAPABILITIES.hasWriter = 'Writer' in self || 'Writer' in window;
+    AI_CAPABILITIES.hasRewriter = 'Rewriter' in self || 'Rewriter' in window;
+    AI_CAPABILITIES.hasAi = AI_CAPABILITIES.hasSummarizer || AI_CAPABILITIES.hasPrompt;
     
     // Test actual availability with proper API calls
     if (AI_CAPABILITIES.hasSummarizer) {
       try {
-        const availability = await ai.summarizer.availability();
+        const Summarizer = self.Summarizer || window.Summarizer;
+        const availability = await Summarizer.availability();
         AI_CAPABILITIES.summarizerAvailable = availability !== 'unavailable';
         console.log('[ShopScout AI] Summarizer availability:', availability);
       } catch (err) {
@@ -46,7 +45,8 @@ async function detectAICapabilities() {
     
     if (AI_CAPABILITIES.hasPrompt) {
       try {
-        const capabilities = await ai.languageModel.capabilities();
+        const LanguageModel = self.LanguageModel || window.LanguageModel;
+        const capabilities = await LanguageModel.capabilities();
         AI_CAPABILITIES.promptAvailable = capabilities.available !== 'no';
         console.log('[ShopScout AI] Prompt API capabilities:', capabilities);
       } catch (err) {
@@ -71,9 +71,9 @@ async function detectUserLanguage() {
   let userLang = navigator.language || 'en';
   
   try {
-    const ai = window.ai || self.ai || globalThis.ai;
-    if (AI_CAPABILITIES.hasLanguageDetector && ai?.languageDetector) {
-      const ld = await ai.languageDetector.create();
+    if (AI_CAPABILITIES.hasLanguageDetector) {
+      const LanguageDetector = self.LanguageDetector || window.LanguageDetector;
+      const ld = await LanguageDetector.create();
       const pageText = document.body.innerText?.substring(0, 5000) || navigator.language;
       const detection = await ld.detect(pageText);
       
@@ -102,15 +102,15 @@ async function detectUserLanguage() {
  */
 async function createSummarizerWithMonitor(onProgress, language = 'en') {
   try {
-    const ai = window.ai || self.ai || globalThis.ai;
-    
-    if (!AI_CAPABILITIES.hasSummarizer || !ai?.summarizer) {
+    if (!AI_CAPABILITIES.hasSummarizer) {
       console.log('[ShopScout AI] Summarizer not available');
       return null;
     }
     
+    const Summarizer = self.Summarizer || window.Summarizer;
+    
     // Check availability first
-    const availability = await ai.summarizer.availability();
+    const availability = await Summarizer.availability();
     if (availability === 'unavailable') {
       console.log('[ShopScout AI] Summarizer API unavailable');
       return null;
@@ -118,12 +118,11 @@ async function createSummarizerWithMonitor(onProgress, language = 'en') {
     
     console.log('[ShopScout AI] Creating summarizer...');
     
-    const summarizer = await ai.summarizer.create({
+    const summarizer = await Summarizer.create({
+      sharedContext: 'Summarize this product information for a shopping assistant. Focus on key features and benefits.',
       type: 'key-points',
       format: 'plain-text',
       length: 'short',
-      expectedInputLanguages: [language || 'en'],
-      outputLanguage: language || 'en',
       monitor(m) {
         m.addEventListener('downloadprogress', (e) => {
           const progress = e.loaded;
@@ -167,9 +166,7 @@ async function generateSummaryWithSummarizer(text, language, onProgress) {
     const maxLength = 32000;
     const truncatedText = text.length > maxLength ? text.substring(0, maxLength) : text;
     
-    const summary = await summarizer.summarize(truncatedText, {
-      context: `Summarize this product information for a shopping assistant. Focus on key features and benefits.`
-    });
+    const summary = await summarizer.summarize(truncatedText);
     
     const timeToFirstByte = performance.now() - startTime;
     
@@ -208,15 +205,15 @@ async function generateSummaryWithPromptStreaming(text, language, onChunk) {
   let firstChunk = true;
   
   try {
-    const ai = window.ai || self.ai || globalThis.ai;
-    
-    if (!AI_CAPABILITIES.hasPrompt || !ai?.languageModel) {
+    if (!AI_CAPABILITIES.hasPrompt) {
       return {
         success: false,
         error: 'Prompt API unavailable',
         apiUsed: 'prompt-streaming'
       };
     }
+    
+    const LanguageModel = self.LanguageModel || window.LanguageModel;
     
     const languageNames = {
       en: 'English',
@@ -241,7 +238,7 @@ Rules:
 - Be objective and factual
 - Use ${langName} language for the output`;
     
-    const lm = await ai.languageModel.create({
+    const lm = await LanguageModel.create({
       systemPrompt,
       temperature: 0.3,
       topK: 3

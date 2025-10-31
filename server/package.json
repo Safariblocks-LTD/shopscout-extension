@@ -2,6 +2,7 @@
   "name": "shopscout-server",
   "version": "1.0.0",
   "description": "ShopScout Backend API Server",
+  "license": "AGPL-3.0-only",
   "main": "index.js",
   "type": "module",
   "scripts": {
